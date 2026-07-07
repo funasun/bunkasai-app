@@ -1,0 +1,52 @@
+{
+  "title": "文化祭 採点",
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "step": 1
+  },
+  "criteria": [
+    {
+      "id": "c1",
+      "name": "企画性",
+      "weight": 1
+    },
+    {
+      "id": "c_eb515fdc5767",
+      "name": "完成度",
+      "weight": 1
+    },
+    {
+      "id": "c_0610ab730353",
+      "name": "盛り上がり",
+      "weight": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "i_e430ab0946f3",
+      "name": "1年A組 お化け屋敷",
+      "description": "教室展示"
+    },
+    {
+      "id": "i_f772aaa53c11",
+      "name": "2年B組 メイドカフェ",
+      "description": "飲食"
+    },
+    {
+      "id": "i_6105ee7fde4e",
+      "name": "3年C組 演劇「銀河鉄道の夜」",
+      "description": "体育館ステージ"
+    },
+    {
+      "id": "i_5fc3ec48eaeb",
+      "name": "軽音部 ライブ",
+      "description": "中庭ステージ"
+    }
+  ],
+  "judges": [
+    "田中先生",
+    "佐藤先生",
+    "鈴木先生"
+  ]
+}

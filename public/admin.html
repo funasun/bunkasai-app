@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>管理・結果 | 文化祭 採点</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-8"/>
+        </svg>
+      </div>
+      <div>
+        <h1>管理・結果</h1>
+        <div class="brand-sub">ADMIN</div>
+      </div>
+    </div>
+    <button class="ghost" id="logoutBtn" style="color:#e2e8f0;border-color:rgba(255,255,255,.3);padding:8px 16px" >ログアウト</button>
+  </header>
+
+  <div class="container">
+    <!-- ログイン -->
+    <section class="card" id="loginCard" style="max-width:460px;margin-left:auto;margin-right:auto">
+      <div class="hero">
+        <h2>パスワードでログイン</h2>
+        <p>集計結果は審査に影響しないよう、<br>担当者のみが閲覧できます。</p>
+      </div>
+      <label for="password">パスワード</label>
+      <input id="password" type="password" placeholder="初期値: admin" autocomplete="current-password" />
+      <div class="row" style="margin-top:18px">
+        <button id="loginBtn" style="width:100%">ログイン</button>
+      </div>
+    </section>
+
+    <!-- タブ -->
+    <div id="adminArea" class="hidden">
+      <div class="segmented" id="tabs" style="margin-bottom:18px">
+        <button data-tab="results" class="active">結果・順位</button>
+        <button data-tab="items">出し物</button>
+        <button data-tab="criteria">採点項目</button>
+        <button data-tab="judges">審査員</button>
+        <button data-tab="settings">設定</button>
+      </div>
+
+      <!-- 結果 -->
+      <section class="tab" id="tab-results">
+        <div class="card">
+          <h2>集計</h2>
+          <p class="section-lead">対象と集計方法を選ぶと、順位が即座に再計算されます。</p>
+          <div class="segmented" id="voterFilter" style="margin-bottom:6px">
+            <button data-vt="judge" class="active">審査員</button>
+            <button data-vt="visitor">来場者</button>
+            <button data-vt="all">全体</button>
+          </div>
+          <label for="methodSelect">順位に使う集計方法</label>
+          <select id="methodSelect"></select>
+          <div class="method-desc" id="methodDesc"></div>
+          <div class="stat-row">
+            <div class="stat"><div class="s-label">審査員の票</div><div class="s-value" id="statJudge">0</div></div>
+            <div class="stat"><div class="s-label">来場者の票</div><div class="s-value" id="statVisitor">0</div></div>
+            <div class="stat"><div class="s-label">出し物</div><div class="s-value" id="statItems">0</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>順位</h2>
+          <div class="table-scroll" id="rankingTable"></div>
+        </div>
+        <div class="card">
+          <h2>集計方法の比較</h2>
+          <p class="section-lead">同じ票を各方法で集計したときの順位。偏りの影響を確認できます。</p>
+          <div class="table-scroll" id="compareTable"></div>
+        </div>
+      </section>
+
+      <!-- 出し物 -->
+      <section class="tab hidden" id="tab-items">
+        <div class="card">
+          <h2>出し物を追加</h2>
+          <div class="grid2">
+            <div><label>名前</label><input id="itemName" placeholder="例: 1年A組 お化け屋敷" /></div>
+            <div><label>説明（任意）</label><input id="itemDesc" placeholder="例: 教室展示" /></div>
+          </div>
+          <div class="row" style="margin-top:14px"><button id="addItem">追加</button></div>
+        </div>
+        <div class="card"><h2>登録済みの出し物</h2><div id="itemsList"></div></div>
+      </section>
+
+      <!-- 採点項目 -->
+      <section class="tab hidden" id="tab-criteria">
+        <div class="card">
+          <h2>採点項目を追加</h2>
+          <p class="section-lead">例: 企画性・完成度・盛り上がり。重みを大きくすると総合点への影響が増えます。</p>
+          <div class="grid2">
+            <div><label>項目名</label><input id="critName" placeholder="例: 完成度" /></div>
+            <div><label>重み</label><input id="critWeight" type="number" value="1" min="0.1" step="0.1" /></div>
+          </div>
+          <div class="row" style="margin-top:14px"><button id="addCrit">追加</button></div>
+        </div>
+        <div class="card"><h2>登録済みの採点項目</h2><div id="critList"></div></div>
+      </section>
+
+      <!-- 審査員 -->
+      <section class="tab hidden" id="tab-judges">
+        <div class="card">
+          <h2>審査員を登録</h2>
+          <p class="section-lead">審査員として採点できるのは、ここに登録された名前のかただけです。投票画面ではリストから選択します。</p>
+          <div class="grid2">
+            <div><label>名前</label><input id="judgeNewName" placeholder="例: 山田先生" /></div>
+          </div>
+          <div class="row" style="margin-top:14px"><button id="addJudge">登録</button></div>
+        </div>
+        <div class="card"><h2>登録済みの審査員</h2><div id="judgesList"></div></div>
+      </section>
+
+      <!-- 設定 -->
+      <section class="tab hidden" id="tab-settings">
+        <div class="card">
+          <h2>基本設定</h2>
+          <label>タイトル</label>
+          <input id="setTitle" />
+          <label>審査員コード</label>
+          <input id="setJudgeCode" autocomplete="off" />
+          <p class="muted" style="margin:6px 0 0">審査員として採点するための合言葉です。審査員のかたにだけ伝えてください。</p>
+          <h2 style="margin-top:26px">点数段階</h2>
+          <p class="section-lead">投票画面に表示する点数ボタンの範囲です。</p>
+          <div class="grid2">
+            <div><label>最小</label><input id="scaleMin" type="number" /></div>
+            <div><label>最大</label><input id="scaleMax" type="number" /></div>
+          </div>
+          <label>刻み</label>
+          <input id="scaleStep" type="number" min="0.1" step="0.1" />
+          <h2 style="margin-top:26px">集計方法のパラメータ</h2>
+          <div class="grid2">
+            <div><label>ベイズ平均の事前サンプル数 (C)</label><input id="bayesPrior" type="number" min="0" step="1" /></div>
+            <div><label>トリム平均の除外割合 (0〜0.45)</label><input id="trimRatio" type="number" min="0" max="0.45" step="0.05" /></div>
+          </div>
+          <div class="row" style="margin-top:18px"><button id="saveSettings">設定を保存</button></div>
+        </div>
+        <div class="card">
+          <h2>パスワード変更</h2>
+          <label>新しいパスワード（4文字以上）</label>
+          <input id="newPassword" type="password" autocomplete="new-password" />
+          <div class="row" style="margin-top:14px"><button id="changePw" class="secondary">変更</button></div>
+        </div>
+        <div class="card">
+          <h2>データ管理</h2>
+          <div class="row">
+            <button class="secondary" type="button" id="exportBtn">投票データをCSV出力</button>
+            <button class="secondary" type="button" id="reloadConfigBtn">config.json を再読み込み</button>
+            <button id="resetVotes" class="danger">全投票をリセット</button>
+          </div>
+          <p class="muted" style="margin-top:10px">出し物・採点項目・審査員・点数段階はリポジトリ直下の config.json を直接編集しても変更できます。編集後は再読み込みを押してください。リセットは元に戻せません。</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="admin.js"></script>
+</body>
+</html>
