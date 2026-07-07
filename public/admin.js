@@ -300,8 +300,20 @@ function fillSettingsForm() {
   $('#scaleMin').value = s.scale.min;
   $('#scaleMax').value = s.scale.max;
   $('#scaleStep').value = s.scale.step;
-  $('#bayesPrior').value = s.bayesianPrior;
-  $('#trimRatio').value = s.trimRatio;
+  setSelectValue($('#bayesPrior'), s.bayesianPrior);
+  setSelectValue($('#trimRatio'), s.trimRatio);
+}
+
+// プルダウンにない値（過去に手入力した等）は選択肢として追加してから選ぶ
+function setSelectValue(sel, value) {
+  const v = String(value);
+  if (![...sel.options].some((o) => o.value === v)) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = `${v}（現在の設定）`;
+    sel.appendChild(opt);
+  }
+  sel.value = v;
 }
 
 $('#saveSettings').addEventListener('click', async () => {

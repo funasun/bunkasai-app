@@ -101,7 +101,16 @@
           <p class="section-lead">例: 企画性・完成度・盛り上がり。重みを大きくすると総合点への影響が増えます。</p>
           <div class="grid2">
             <div><label>項目名</label><input id="critName" placeholder="例: 完成度" /></div>
-            <div><label>重み</label><input id="critWeight" type="number" value="1" min="0.1" step="0.1" /></div>
+            <div>
+              <label>重み（総合点への影響度）</label>
+              <select id="critWeight">
+                <option value="0.5">0.5 — 参考程度（影響は半分）</option>
+                <option value="1" selected>1 — 標準</option>
+                <option value="1.5">1.5 — やや重視</option>
+                <option value="2">2 — 重視（影響は2倍）</option>
+                <option value="3">3 — 最重視（影響は3倍）</option>
+              </select>
+            </div>
           </div>
           <div class="row" style="margin-top:14px"><button id="addCrit">追加</button></div>
         </div>
@@ -126,9 +135,29 @@
           <label>刻み</label>
           <input id="scaleStep" type="number" min="0.1" step="0.1" />
           <h2 style="margin-top:26px">集計方法のパラメータ</h2>
+          <p class="section-lead">「総合補正」「ベイズ平均」「トリム平均」で使われます。迷ったら「標準」のままでOKです。</p>
           <div class="grid2">
-            <div><label>ベイズ平均の事前サンプル数 (C)</label><input id="bayesPrior" type="number" min="0" step="1" /></div>
-            <div><label>トリム平均の除外割合 (0〜0.45)</label><input id="trimRatio" type="number" min="0" max="0.45" step="0.05" /></div>
+            <div>
+              <label>少数票の補正の強さ（ベイズ）</label>
+              <select id="bayesPrior">
+                <option value="0">補正しない（0）</option>
+                <option value="3">弱め（3）— 少しだけ全体平均へ寄せる</option>
+                <option value="5">標準（5）— おすすめ</option>
+                <option value="10">強め（10）— 票の少ない出し物を大きく平均へ</option>
+              </select>
+              <p class="muted" style="margin:6px 0 0">票が少ない出し物が偶然の高得点で上位に来るのを防ぎます。数字は「何票ぶん全体平均に引き寄せるか」。</p>
+            </div>
+            <div>
+              <label>外れ値の除外割合（トリム）</label>
+              <select id="trimRatio">
+                <option value="0">除外しない（0%）</option>
+                <option value="0.05">弱め（上下5%）— ごく極端な票だけ除外</option>
+                <option value="0.1">標準（上下10%）— おすすめ</option>
+                <option value="0.2">強め（上下20%）— いたずら票が心配なとき</option>
+                <option value="0.3">かなり強め（上下30%）</option>
+              </select>
+              <p class="muted" style="margin:6px 0 0">高すぎ・低すぎな票を上下から除いて平均します。身内票やいたずら票の影響を抑えられます。</p>
+            </div>
           </div>
           <div class="row" style="margin-top:18px"><button id="saveSettings">設定を保存</button></div>
         </div>
