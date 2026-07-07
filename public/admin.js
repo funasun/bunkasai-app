@@ -68,13 +68,13 @@ $('#logoutBtn').addEventListener('click', () => {
 
 // --- タブ切替 -------------------------------------------------------
 $('#tabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('button');
+  const btn = e.target.closest('button[data-tab]');
   if (!btn) return;
-  [...$('#tabs').children].forEach((b) => b.classList.toggle('active', b === btn));
+  $('#tabs').querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('active', b === btn));
   document.querySelectorAll('.tab').forEach((t) => t.classList.add('hidden'));
   $(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
   if (btn.dataset.tab === 'results') loadResults();
-  if (btn.dataset.tab === 'survey') loadSurveyResults();
+  if (btn.dataset.tab === 'survey-results') loadSurveyResults();
 });
 
 // --- 起動 -----------------------------------------------------------
@@ -470,25 +470,85 @@ function renderCriteria() {
   }
 }
 
-// --- アンケート設問 ---------------------------------------------------
+// --- アンケート設問（Googleフォーム風の編集） -------------------------
+let editingQuestionId = null;
+
 $('#qType').addEventListener('change', () => {
   $('#qOptionsWrap').classList.toggle('hidden', $('#qType').value !== 'choice');
 });
+
+$('#qMultiple').addEventListener('change', () => {
+  [...$('#qOptionRows').children].forEach((r) => r.classList.toggle('multi', $('#qMultiple').checked));
+});
+
+$('#addOptionBtn').addEventListener('click', () => addOptionRow('', true));
+$('#cancelEditQ').addEventListener('click', resetQuestionForm);
+
+function addOptionRow(value = '', focus = false) {
+  const row = document.createElement('div');
+  row.className = 'option-row' + ($('#qMultiple').checked ? ' multi' : '');
+  const dot = document.createElement('span');
+  dot.className = 'opt-dot';
+  const input = document.createElement('input');
+  input.value = value;
+  // Enterで次の選択肢を追加（Googleフォームと同じ操作感）
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addOptionRow('', true); }
+  });
+  const rm = document.createElement('button');
+  rm.type = 'button'; rm.className = 'opt-remove'; rm.textContent = '✕';
+  rm.title = 'この選択肢を削除';
+  rm.onclick = () => {
+    if ($('#qOptionRows').children.length <= 2) return toast('選択肢は2つ以上必要です', 'err');
+    row.remove();
+    renumberOptionRows();
+  };
+  row.append(dot, input, rm);
+  $('#qOptionRows').appendChild(row);
+  renumberOptionRows();
+  if (focus) input.focus();
+}
+
+function renumberOptionRows() {
+  [...$('#qOptionRows').querySelectorAll('input')].forEach((inp, i) => { inp.placeholder = `選択肢 ${i + 1}`; });
+}
+
+function getOptionValues() {
+  return [...$('#qOptionRows').querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean);
+}
+
+function resetQuestionForm() {
+  editingQuestionId = null;
+  $('#qText').value = '';
+  $('#qType').value = 'choice';
+  $('#qMultiple').checked = false;
+  $('#qOptionsWrap').classList.remove('hidden');
+  $('#qOptionRows').innerHTML = '';
+  addOptionRow();
+  addOptionRow();
+  $('#qFormTitle').textContent = '設問を追加';
+  $('#addQuestion').textContent = '設問を追加';
+  $('#cancelEditQ').classList.add('hidden');
+}
+resetQuestionForm();
 
 $('#addQuestion').addEventListener('click', async () => {
   const question = $('#qText').value.trim();
   if (!question) return toast('質問文を入力してください', 'err');
   const type = $('#qType').value;
-  const options = $('#qOptions').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  const options = type === 'choice' ? getOptionValues() : [];
   if (type === 'choice' && options.length < 2) return toast('選択肢は2つ以上入力してください', 'err');
+  const body = JSON.stringify({ question, type, options, multiple: $('#qMultiple').checked });
   try {
-    await api('/api/admin/survey-questions', {
-      method: 'POST',
-      body: JSON.stringify({ question, type, options, multiple: $('#qMultiple').checked }),
-    });
-    $('#qText').value = ''; $('#qOptions').value = ''; $('#qMultiple').checked = false;
+    if (editingQuestionId) {
+      await api(`/api/admin/survey-questions/${editingQuestionId}`, { method: 'PUT', body });
+      toast('設問を更新しました', 'ok');
+    } else {
+      await api('/api/admin/survey-questions', { method: 'POST', body });
+      toast('設問を追加しました', 'ok');
+    }
+    resetQuestionForm();
     await refreshMeta();
-    toast('設問を追加しました', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 });
 
@@ -503,30 +563,35 @@ function renderQuestions() {
   questions.forEach((q, idx) => {
     const row = document.createElement('div');
     row.className = 'list-row';
-    const typeLabel = q.type === 'text' ? '記述式' : q.multiple ? '選択式（複数可）' : '選択式';
-    const detail = q.type === 'choice' ? ` <span class="muted">${q.options.map(escapeHtml).join(' / ')}</span>` : '';
-    row.innerHTML = `<div class="grow"><strong>Q${idx + 1}. ${escapeHtml(q.question)}</strong> <span class="pill" style="margin-left:6px">${typeLabel}</span><br>${detail}</div>`;
+    const typeLabel = q.type === 'text' ? '記述式' : q.multiple ? '選択式・複数可' : '選択式';
+    const detail = q.type === 'choice' ? `<span class="muted">${q.options.map(escapeHtml).join(' ／ ')}</span>` : '';
+    row.innerHTML = `<div class="grow"><strong>Q${idx + 1}. ${escapeHtml(q.question)}</strong> <span class="tag">${typeLabel}</span><br>${detail}</div>`;
     const edit = document.createElement('button');
     edit.className = 'secondary'; edit.textContent = '編集';
-    edit.onclick = async () => {
-      const question = prompt('質問文', q.question);
-      if (question === null) return;
-      const body = { question: question.trim() || q.question };
-      if (q.type === 'choice') {
-        const opts = prompt('選択肢（カンマ区切り）\n※回答が集まったあとに変えると集計がずれます', q.options.join(','));
-        if (opts === null) return;
-        body.options = opts.split(',').map((s) => s.trim()).filter(Boolean);
-        if (body.options.length < 2) return toast('選択肢は2つ以上必要です', 'err');
-      }
-      try { await api(`/api/admin/survey-questions/${q.id}`, { method: 'PUT', body: JSON.stringify(body) }); await refreshMeta(); toast('更新しました', 'ok'); }
-      catch (e) { toast(e.message, 'err'); }
+    edit.onclick = () => {
+      editingQuestionId = q.id;
+      $('#qText').value = q.question;
+      $('#qType').value = q.type;
+      $('#qOptionsWrap').classList.toggle('hidden', q.type !== 'choice');
+      $('#qMultiple').checked = q.multiple === true;
+      $('#qOptionRows').innerHTML = '';
+      if (q.type === 'choice') q.options.forEach((o) => addOptionRow(o));
+      else { addOptionRow(); addOptionRow(); }
+      $('#qFormTitle').textContent = `設問を編集中（Q${idx + 1}）`;
+      $('#addQuestion').textContent = 'この内容で更新';
+      $('#cancelEditQ').classList.remove('hidden');
+      $('#qFormTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     const del = document.createElement('button');
     del.className = 'danger'; del.textContent = '削除';
     del.onclick = async () => {
       if (!confirm(`設問「${q.question}」を削除しますか？`)) return;
-      try { await api(`/api/admin/survey-questions/${q.id}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
-      catch (e) { toast(e.message, 'err'); }
+      try {
+        await api(`/api/admin/survey-questions/${q.id}`, { method: 'DELETE' });
+        if (editingQuestionId === q.id) resetQuestionForm();
+        await refreshMeta();
+        toast('削除しました', 'ok');
+      } catch (e) { toast(e.message, 'err'); }
     };
     row.append(edit, del);
     box.appendChild(row);
@@ -594,7 +659,7 @@ async function loadSurveyResults() {
       }
       box.appendChild(block);
     });
-    if (!data.questions.length) box.innerHTML = '<div class="empty">設問がありません。「アンケートの設問」から追加してください。</div>';
+    if (!data.questions.length) box.innerHTML = '<div class="empty">設問がありません。「来場者アンケート」タブから追加してください。</div>';
   } catch (e) { toast(e.message, 'err'); }
 }
 

@@ -39,12 +39,23 @@
 
     <!-- タブ -->
     <div id="adminArea" class="hidden">
-      <div class="segmented" id="tabs" style="margin-bottom:18px">
-        <button data-tab="results" class="active">結果・順位</button>
-        <button data-tab="items">出し物・部門</button>
-        <button data-tab="criteria">採点項目</button>
-        <button data-tab="survey">アンケート</button>
-        <button data-tab="settings">設定</button>
+      <div class="tab-nav" id="tabs">
+        <div class="tab-group">
+          <div class="tab-group-label">結果を見る</div>
+          <div class="segmented">
+            <button data-tab="results" class="active">採点結果・順位</button>
+            <button data-tab="survey-results">アンケート結果</button>
+          </div>
+        </div>
+        <div class="tab-group">
+          <div class="tab-group-label">準備・設定</div>
+          <div class="segmented">
+            <button data-tab="items">出し物・部門</button>
+            <button data-tab="criteria">採点項目</button>
+            <button data-tab="survey">来場者アンケート</button>
+            <button data-tab="settings">設定</button>
+          </div>
+        </div>
       </div>
 
       <!-- 結果 -->
@@ -52,6 +63,7 @@
         <div class="card">
           <h2>集計</h2>
           <p class="section-lead">対象と集計方法を選ぶと、順位が即座に再計算されます。</p>
+          <label>だれの票で順位を出すか</label>
           <div class="segmented" id="voterFilter" style="margin-bottom:6px">
             <button data-vt="judge" class="active">採点委員</button>
             <button data-vt="visitor">来場者</button>
@@ -66,9 +78,24 @@
           <div class="method-desc" id="methodDesc"></div>
           <p class="muted hidden" id="choiceModeNote" style="margin:8px 0 0">来場者の投票は「選択方式」です。来場者の順位は得票数（選ばれた回数）で決まり、集計方法・採点項目の重みは採点委員の票にのみ適用されます。</p>
           <div class="stat-row">
-            <div class="stat"><div class="s-label">採点委員の票</div><div class="s-value" id="statJudge">0</div></div>
-            <div class="stat"><div class="s-label">来場者の票</div><div class="s-value" id="statVisitor">0</div></div>
-            <div class="stat"><div class="s-label">出し物</div><div class="s-value" id="statItems">0</div></div>
+            <div class="stat vote-judge">
+              <div class="s-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 16.8 6.2 19.9l1.1-6.5L2.6 8.8l6.5-.9L12 2z"/></svg>
+              </div>
+              <div><div class="s-label">採点委員の票</div><div class="s-value"><span id="statJudge">0</span><span class="s-unit">票</span></div></div>
+            </div>
+            <div class="stat vote-visitor">
+              <div class="s-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div><div class="s-label">来場者の票</div><div class="s-value"><span id="statVisitor">0</span><span class="s-unit">票</span></div></div>
+            </div>
+            <div class="stat items">
+              <div class="s-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div><div class="s-label">出し物の数</div><div class="s-value"><span id="statItems">0</span><span class="s-unit">件</span></div></div>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -139,15 +166,15 @@
         <div class="card"><h2>登録済みの採点項目</h2><div id="critList"></div></div>
       </section>
 
-      <!-- アンケート -->
+      <!-- 来場者アンケート（設問づくり） -->
       <section class="tab hidden" id="tab-survey">
         <div class="card">
-          <h2>アンケートの設問</h2>
-          <p class="section-lead">来場者の投票画面に「アンケートに答える」ボタンが表示されます（設問が1つ以上あるとき）。回答が集まったあとに選択肢を変えると集計がずれるため、変えた場合は回答のリセットをおすすめします。</p>
+          <h2 id="qFormTitle">設問を追加</h2>
+          <p class="section-lead">来場者だけに表示されるアンケートです（採点委員の画面には出ません）。設問が1つ以上あると、来場者の投票画面に「アンケートに答える」ボタンが表示されます。</p>
           <div class="grid2">
             <div><label>質問文</label><input id="qText" placeholder="例: 文化祭の満足度を教えてください" /></div>
             <div>
-              <label>形式</label>
+              <label>回答の形式</label>
               <select id="qType">
                 <option value="choice">選択式（集計・グラフ向き）</option>
                 <option value="text">記述式（自由に書いてもらう）</option>
@@ -155,18 +182,30 @@
             </div>
           </div>
           <div id="qOptionsWrap">
-            <label style="margin-top:12px">選択肢（1行に1つ）</label>
-            <textarea id="qOptions" rows="4" placeholder="とても満足&#10;満足&#10;ふつう&#10;不満" style="width:100%;resize:vertical"></textarea>
-            <label style="margin-top:10px;display:flex;align-items:center;gap:8px;font-weight:600">
+            <label style="margin-top:14px">選択肢</label>
+            <div id="qOptionRows"></div>
+            <button class="ghost" type="button" id="addOptionBtn" style="margin-top:8px">＋ 選択肢を追加</button>
+            <label style="margin-top:14px;display:flex;align-items:center;gap:8px;font-weight:600">
               <input type="checkbox" id="qMultiple" style="width:auto;margin:0" /> 複数選択を許可する
             </label>
           </div>
-          <div class="row" style="margin-top:14px"><button id="addQuestion">設問を追加</button></div>
+          <div class="row" style="margin-top:16px">
+            <button id="addQuestion">設問を追加</button>
+            <button class="ghost hidden" type="button" id="cancelEditQ">編集をやめる</button>
+          </div>
         </div>
-        <div class="card"><h2>登録済みの設問</h2><div id="questionList"></div></div>
+        <div class="card">
+          <h2>登録済みの設問</h2>
+          <p class="section-lead">回答が集まったあとに選択肢を変えると集計がずれます。大きく変えた場合は「アンケート結果」タブから回答のリセットをおすすめします。</p>
+          <div id="questionList"></div>
+        </div>
+      </section>
+
+      <!-- アンケート結果 -->
+      <section class="tab hidden" id="tab-survey-results">
         <div class="card">
           <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-            <h2 style="margin:0">回答結果</h2>
+            <h2 style="margin:0">来場者アンケートの結果</h2>
             <div class="row" style="gap:8px">
               <button class="secondary" type="button" id="reloadSurveyBtn">最新に更新</button>
               <button class="danger" type="button" id="resetSurveyBtn">回答をリセット</button>
@@ -190,10 +229,10 @@
         </div>
         <div class="card">
           <h2>来場者の投票方式</h2>
-          <p class="section-lead">来場者の採点画面の形式です。採点委員は常に「点数方式」で採点します。</p>
+          <p class="section-lead">点数方式＝項目ごとに点数をつける ／ 選択方式＝お気に入りの出し物を選ぶだけ。採点委員は常に点数方式で採点します。</p>
           <div class="segmented" id="visitorModeToggle" style="max-width:380px">
             <button data-mode="score" type="button">点数方式</button>
-            <button data-mode="choice" type="button">選択方式（お気に入り）</button>
+            <button data-mode="choice" type="button">選択方式</button>
           </div>
           <div id="choiceMaxWrap" class="hidden" style="margin-top:14px;max-width:380px">
             <label>1人が選べる数</label>
