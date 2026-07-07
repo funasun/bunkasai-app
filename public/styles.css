@@ -323,6 +323,20 @@ tr:last-child td { border-bottom: none; }
 th { color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-scroll { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
+/* 大きな表（採点表など）で先頭列を固定してスクロールしやすくする */
+.table-scroll .sticky-col { position: sticky; left: 0; background: var(--card); z-index: 1; box-shadow: 2px 0 0 var(--line); }
+.table-scroll thead .sticky-col { z-index: 2; }
+
+/* 投票画面: 部門の見出し */
+.cat-heading {
+  grid-column: 1 / -1;
+  margin: 14px 0 2px;
+  font-weight: 800;
+  color: var(--primary);
+  font-size: .95rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.cat-heading::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
 .rank-badge {
   display: inline-grid; place-items: center;

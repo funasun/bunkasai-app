@@ -41,8 +41,9 @@
     <div id="adminArea" class="hidden">
       <div class="segmented" id="tabs" style="margin-bottom:18px">
         <button data-tab="results" class="active">結果・順位</button>
-        <button data-tab="items">出し物</button>
+        <button data-tab="items">出し物・部門</button>
         <button data-tab="criteria">採点項目</button>
+        <button data-tab="survey">アンケート</button>
         <button data-tab="settings">設定</button>
       </div>
 
@@ -56,6 +57,10 @@
             <button data-vt="visitor">来場者</button>
             <button data-vt="all">全体</button>
           </div>
+          <div id="categoryFilterWrap" class="hidden">
+            <label for="categoryFilter">部門</label>
+            <select id="categoryFilter"></select>
+          </div>
           <label for="methodSelect">順位に使う集計方法</label>
           <select id="methodSelect"></select>
           <div class="method-desc" id="methodDesc"></div>
@@ -67,8 +72,11 @@
           </div>
         </div>
         <div class="card">
-          <h2>順位</h2>
-          <div class="table-scroll" id="rankingTable"></div>
+          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h2 id="rankingTitle" style="margin:0">順位</h2>
+            <button class="secondary" type="button" id="exportRankingImg">画像で保存（公表用）</button>
+          </div>
+          <div class="table-scroll" id="rankingTable" style="margin-top:12px"></div>
         </div>
         <div class="card">
           <h2>集計方法の比較</h2>
@@ -78,18 +86,31 @@
         <div class="card">
           <h2>採点委員の採点表</h2>
           <p class="section-lead" id="judgeMatrixLead">採点委員ごと・出し物ごとの点数の一覧です。太字が総合点（重み付き合計）、カッコ内は項目別の点数。</p>
-          <div class="table-scroll" id="judgeMatrix"></div>
+          <label for="judgeSelect">表示する採点委員</label>
+          <select id="judgeSelect" style="max-width:380px"></select>
+          <div class="table-scroll" id="judgeMatrix" style="margin-top:12px"></div>
         </div>
       </section>
 
-      <!-- 出し物 -->
+      <!-- 出し物・部門 -->
       <section class="tab hidden" id="tab-items">
+        <div class="card">
+          <h2>部門</h2>
+          <p class="section-lead">例: 展示部門・ステージ部門・飲食部門。部門を作ると、順位を「部門ごと」と「総合」で見られます。</p>
+          <div class="row" style="gap:8px;flex-wrap:nowrap;max-width:480px">
+            <input id="catName" placeholder="例: 展示部門" style="flex:1;min-width:0" />
+            <button type="button" id="addCat" style="white-space:nowrap">部門を追加</button>
+          </div>
+          <div id="catList" style="margin-top:10px"></div>
+        </div>
         <div class="card">
           <h2>出し物を追加</h2>
           <div class="grid2">
             <div><label>名前</label><input id="itemName" placeholder="例: 1年A組 お化け屋敷" /></div>
             <div><label>説明（任意）</label><input id="itemDesc" placeholder="例: 教室展示" /></div>
           </div>
+          <label style="margin-top:12px">部門</label>
+          <select id="itemCat" style="max-width:380px"></select>
           <div class="row" style="margin-top:14px"><button id="addItem">追加</button></div>
         </div>
         <div class="card"><h2>登録済みの出し物</h2><div id="itemsList"></div></div>
@@ -116,6 +137,44 @@
           <div class="row" style="margin-top:14px"><button id="addCrit">追加</button></div>
         </div>
         <div class="card"><h2>登録済みの採点項目</h2><div id="critList"></div></div>
+      </section>
+
+      <!-- アンケート -->
+      <section class="tab hidden" id="tab-survey">
+        <div class="card">
+          <h2>アンケートの設問</h2>
+          <p class="section-lead">来場者の投票画面に「アンケートに答える」ボタンが表示されます（設問が1つ以上あるとき）。回答が集まったあとに選択肢を変えると集計がずれるため、変えた場合は回答のリセットをおすすめします。</p>
+          <div class="grid2">
+            <div><label>質問文</label><input id="qText" placeholder="例: 文化祭の満足度を教えてください" /></div>
+            <div>
+              <label>形式</label>
+              <select id="qType">
+                <option value="choice">選択式（集計・グラフ向き）</option>
+                <option value="text">記述式（自由に書いてもらう）</option>
+              </select>
+            </div>
+          </div>
+          <div id="qOptionsWrap">
+            <label style="margin-top:12px">選択肢（1行に1つ）</label>
+            <textarea id="qOptions" rows="4" placeholder="とても満足&#10;満足&#10;ふつう&#10;不満" style="width:100%;resize:vertical"></textarea>
+            <label style="margin-top:10px;display:flex;align-items:center;gap:8px;font-weight:600">
+              <input type="checkbox" id="qMultiple" style="width:auto;margin:0" /> 複数選択を許可する
+            </label>
+          </div>
+          <div class="row" style="margin-top:14px"><button id="addQuestion">設問を追加</button></div>
+        </div>
+        <div class="card"><h2>登録済みの設問</h2><div id="questionList"></div></div>
+        <div class="card">
+          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h2 style="margin:0">回答結果</h2>
+            <div class="row" style="gap:8px">
+              <button class="secondary" type="button" id="reloadSurveyBtn">最新に更新</button>
+              <button class="danger" type="button" id="resetSurveyBtn">回答をリセット</button>
+            </div>
+          </div>
+          <p class="section-lead" id="surveyTotal" style="margin-top:10px"></p>
+          <div id="surveyResults"></div>
+        </div>
       </section>
 
       <!-- 設定 -->

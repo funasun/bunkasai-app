@@ -7,6 +7,7 @@ const state = {
   votedItems: new Set(),
   choices: new Set(),   // 選択方式で選んだ出し物
   choiceMode: false,    // 来場者×選択方式のときtrue
+  surveyAnswers: null,  // 最後に送信したアンケート回答（書き直し用）
   currentItem: null,
 };
 
@@ -40,7 +41,7 @@ async function loadConfig() {
 }
 
 function show(cardId) {
-  ['setupCard', 'listCard', 'voteCard'].forEach((id) => {
+  ['setupCard', 'listCard', 'voteCard', 'surveyCard'].forEach((id) => {
     const el = document.getElementById(id);
     el.classList.toggle('hidden', id !== cardId);
     if (id === cardId) {
@@ -136,7 +137,8 @@ function renderItemList() {
     list.innerHTML = '<div class="empty" style="grid-column:1/-1">まだ出し物が登録されていません。<br>管理画面から追加してください。</div>';
     return;
   }
-  for (const item of items) {
+
+  const appendItem = (item) => {
     const marked = state.choiceMode ? state.choices.has(item.id) : state.votedItems.has(item.id);
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -151,9 +153,110 @@ function renderItemList() {
       `<span class="i-arrow">${state.choiceMode ? '' : arrowSvg}</span>`;
     btn.addEventListener('click', () => (state.choiceMode ? toggleChoice(item) : openVote(item)));
     list.appendChild(btn);
+  };
+
+  // 部門があれば部門ごとに見出しを付けて表示する
+  const cats = state.config.categories || [];
+  if (cats.length) {
+    const groups = [...cats, { id: '', name: 'その他' }];
+    for (const cat of groups) {
+      const group = items.filter((i) => (i.categoryId || '') === cat.id);
+      if (!group.length) continue;
+      const heading = document.createElement('div');
+      heading.className = 'cat-heading';
+      heading.textContent = cat.name;
+      list.appendChild(heading);
+      group.forEach(appendItem);
+    }
+  } else {
+    items.forEach(appendItem);
   }
+
+  // 来場者にはアンケートの案内を表示（設問があるときだけ）
+  const showSurvey = state.voterType === 'visitor' && (state.config.survey || []).length > 0;
+  $('#surveyBanner').classList.toggle('hidden', !showSurvey);
+
   if (state.choiceMode) updateChoiceStatus();
 }
+
+// --- アンケート -------------------------------------------------------
+$('#openSurveyBtn').addEventListener('click', () => { renderSurveyForm(); show('surveyCard'); });
+$('#surveyBackBtn').addEventListener('click', () => show('listCard'));
+
+function renderSurveyForm() {
+  const form = $('#surveyForm');
+  form.innerHTML = '';
+  for (const q of state.config.survey || []) {
+    const block = document.createElement('div');
+    block.className = 'criteria-block';
+    block.dataset.qid = q.id;
+    block.dataset.qtype = q.type;
+    const title = document.createElement('div');
+    title.className = 'criteria-name';
+    title.textContent = q.question + (q.type === 'choice' && q.multiple ? '（複数選択OK）' : '');
+    block.appendChild(title);
+    if (q.type === 'text') {
+      const ta = document.createElement('textarea');
+      ta.rows = 3;
+      ta.maxLength = 2000;
+      ta.placeholder = '自由にご記入ください（任意）';
+      ta.style.cssText = 'width:100%;resize:vertical';
+      ta.value = state.surveyAnswers?.[q.id] || '';
+      block.appendChild(ta);
+    } else {
+      const scale = document.createElement('div');
+      scale.className = 'score-scale';
+      q.options.forEach((opt, idx) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = opt;
+        b.dataset.idx = idx;
+        b.style.minWidth = 'auto';
+        b.style.padding = '10px 14px';
+        const prev = state.surveyAnswers?.[q.id];
+        if (Array.isArray(prev) ? prev.includes(idx) : prev === idx) b.classList.add('active');
+        b.addEventListener('click', () => {
+          if (!q.multiple) [...scale.children].forEach((x) => { if (x !== b) x.classList.remove('active'); });
+          b.classList.toggle('active');
+        });
+        scale.appendChild(b);
+      });
+      block.appendChild(scale);
+    }
+    form.appendChild(block);
+  }
+}
+
+$('#submitSurvey').addEventListener('click', async () => {
+  const answers = {};
+  document.querySelectorAll('#surveyForm .criteria-block').forEach((block) => {
+    const qid = block.dataset.qid;
+    if (block.dataset.qtype === 'text') {
+      const v = block.querySelector('textarea').value.trim();
+      if (v) answers[qid] = v;
+    } else {
+      const idxs = [...block.querySelectorAll('.score-scale button.active')].map((b) => Number(b.dataset.idx));
+      if (idxs.length) answers[qid] = idxs.length === 1 ? idxs[0] : idxs;
+    }
+  });
+  if (Object.keys(answers).length === 0) {
+    return toast('少なくとも1問は回答してください', 'err');
+  }
+  try {
+    const res = await fetch('/api/survey', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: state.voterId || getVisitorId(), answers }),
+    });
+    const data = await res.json();
+    if (!res.ok) return toast(data.error || '送信に失敗しました', 'err');
+    state.surveyAnswers = answers;
+    toast('アンケートを送信しました。ご協力ありがとうございます！', 'ok');
+    show('listCard');
+  } catch {
+    toast('通信エラー。もう一度お試しください', 'err');
+  }
+});
 
 // --- 選択方式（お気に入りを選ぶ） -------------------------------------
 function toggleChoice(item) {

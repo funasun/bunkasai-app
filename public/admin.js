@@ -3,6 +3,7 @@ const $ = (sel) => document.querySelector(sel);
 let token = sessionStorage.getItem('adminToken') || null;
 let cache = { settings: null, criteria: [], items: [], methods: [] };
 let voterFilter = 'judge';
+let categoryFilter = ''; // '' = 総合（すべての出し物）
 
 function toast(msg, kind = '') {
   const t = $('#toast');
@@ -73,6 +74,7 @@ $('#tabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tab').forEach((t) => t.classList.add('hidden'));
   $(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
   if (btn.dataset.tab === 'results') loadResults();
+  if (btn.dataset.tab === 'survey') loadSurveyResults();
 });
 
 // --- 起動 -----------------------------------------------------------
@@ -82,10 +84,18 @@ async function boot() {
   cache = data;
   fillSettingsForm();
   fillMethodSelect();
-  renderItems();
-  renderCriteria();
+  renderMeta();
   await loadResults();
   await loadBackups();
+}
+
+// 出し物・部門・設問など、マスターデータに依存するUIをまとめて再描画
+function renderMeta() {
+  renderCategories();
+  fillCategorySelects();
+  renderItems();
+  renderCriteria();
+  renderQuestions();
 }
 
 function fillMethodSelect() {
@@ -141,10 +151,30 @@ function rankBadge(rank) {
 
 const isChoiceVisitor = () => resultsData?.visitorVoteMode === 'choice' && voterFilter === 'visitor';
 
+// 部門フィルタ: 部門内の出し物だけに絞って順位を振り直す（スコアは全体計算のまま）
+function applyCategoryFilter(rows) {
+  if (!categoryFilter) return rows;
+  const inCat = new Set(cache.items.filter((i) => i.categoryId === categoryFilter).map((i) => i.id));
+  const filtered = rows.filter((r) => inCat.has(r.itemId));
+  let rank = 0;
+  let prevScore = null;
+  filtered.forEach((row, i) => {
+    if (prevScore === null || row.score !== prevScore) { rank = i + 1; prevScore = row.score; }
+    row = filtered[i] = { ...row, rank };
+  });
+  return filtered;
+}
+
+function categoryLabel() {
+  if (!categoryFilter) return '総合';
+  return cache.categories.find((c) => c.id === categoryFilter)?.name || '総合';
+}
+
 function renderRanking() {
-  const rows = resultsData[voterFilter].current;
+  const rows = applyCategoryFilter(resultsData[voterFilter].current);
+  $('#rankingTitle').textContent = categoryFilter ? `順位（${categoryLabel()}）` : '順位（総合）';
   if (!rows.length) {
-    $('#rankingTable').innerHTML = '<div class="empty">まだ出し物がありません。「出し物」タブから追加してください。</div>';
+    $('#rankingTable').innerHTML = '<div class="empty">この部門にはまだ出し物がありません。</div>';
     return;
   }
   const scores = rows.map((r) => r.score);
@@ -167,6 +197,97 @@ function renderRanking() {
   $('#rankingTable').innerHTML = html;
 }
 
+// --- 順位の画像出力（公表用） ------------------------------------------
+$('#exportRankingImg').addEventListener('click', () => {
+  const rows = applyCategoryFilter(resultsData?.[voterFilter]?.current || []);
+  if (!rows.length) return toast('出力できる順位がありません', 'err');
+  const canvas = drawRankingImage(rows);
+  downloadCanvas(canvas, `順位_${categoryLabel()}_${voterFilter === 'judge' ? '採点委員' : '来場者'}.png`);
+});
+
+function drawRankingImage(rows) {
+  const scale = 2;
+  const width = 900;
+  const rowH = 52;
+  const padTop = 120;
+  const padBottom = 46;
+  const height = padTop + rows.length * rowH + padBottom;
+  const canvas = document.createElement('canvas');
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = '#4f46e5';
+  ctx.fillRect(0, 0, width, 6);
+
+  const voterLabel = voterFilter === 'judge' ? '採点委員' : '来場者';
+  const methodName = isChoiceVisitor()
+    ? '得票数'
+    : (cache.methods.find((m) => m.id === resultsData.method)?.name || '');
+  ctx.fillStyle = '#16203a';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillText(`${cache.settings.title || '文化祭 採点'}　結果発表`, 32, 52);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '15px sans-serif';
+  ctx.fillText(`${categoryLabel()}順位 ／ ${voterLabel}の投票 ／ 集計: ${methodName}`, 32, 82);
+
+  const scoreLabel = isChoiceVisitor() ? '得票数' : 'スコア';
+  const scores = rows.map((r) => r.score);
+  const maxS = Math.max(...scores);
+  const minS = Math.min(...scores, 0);
+  const span = maxS - minS || 1;
+  const nameX = 100;
+  const barX = 480;
+  const barMaxW = width - barX - 140;
+  const medal = { 1: '#f5b301', 2: '#9aa5b1', 3: '#c9781e' };
+
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(scoreLabel, barX, padTop - 12);
+
+  rows.forEach((r, i) => {
+    const y = padTop + i * rowH;
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(20, y, width - 40, rowH - 6);
+    }
+    // 順位バッジ
+    ctx.beginPath();
+    ctx.arc(56, y + 23, 17, 0, Math.PI * 2);
+    ctx.fillStyle = medal[r.rank] || '#e2e8f0';
+    ctx.fill();
+    ctx.fillStyle = medal[r.rank] ? '#ffffff' : '#16203a';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(r.rank), 56, y + 28);
+    ctx.textAlign = 'left';
+    // 出し物名
+    ctx.fillStyle = '#16203a';
+    ctx.font = 'bold 16px sans-serif';
+    let name = r.name;
+    while (ctx.measureText(name).width > barX - nameX - 20 && name.length > 1) name = name.slice(0, -1);
+    if (name !== r.name) name += '…';
+    ctx.fillText(name, nameX, y + 28);
+    // スコアバー＋数値
+    const w = Math.max(4, ((r.score - minS) / span) * barMaxW);
+    ctx.fillStyle = '#eef2ff';
+    ctx.fillRect(barX, y + 12, barMaxW, 20);
+    ctx.fillStyle = '#4f46e5';
+    ctx.fillRect(barX, y + 12, w, 20);
+    ctx.fillStyle = '#16203a';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(String(r.score), barX + barMaxW + 10, y + 27);
+  });
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '12px sans-serif';
+  ctx.fillText(`出力日時: ${new Date().toLocaleString('ja-JP')}`, 32, height - 18);
+  return canvas;
+}
+
 function renderCompare() {
   const group = resultsData[voterFilter];
   if (!cache.items.length) { $('#compareTable').innerHTML = ''; return; }
@@ -176,16 +297,16 @@ function renderCompare() {
   }
   const rankMaps = {};
   for (const m of cache.methods) {
-    rankMaps[m.id] = new Map(group.byMethod[m.id].map((r) => [r.itemId, r.rank]));
+    rankMaps[m.id] = new Map(applyCategoryFilter(group.byMethod[m.id]).map((r) => [r.itemId, r.rank]));
   }
-  let html = '<table><thead><tr><th>出し物</th>';
+  let html = '<table><thead><tr><th class="sticky-col">出し物</th>';
   for (const m of cache.methods) {
     const active = m.id === cache.settings.method;
     html += `<th class="num"${active ? ' style="color:var(--primary)"' : ''}>${m.name}</th>`;
   }
   html += '</tr></thead><tbody>';
-  for (const r of group.current) {
-    html += `<tr><td><strong>${escapeHtml(r.name)}</strong></td>`;
+  for (const r of applyCategoryFilter(group.current)) {
+    html += `<tr><td class="sticky-col"><strong>${escapeHtml(r.name)}</strong></td>`;
     for (const m of cache.methods) {
       const rank = rankMaps[m.id].get(r.itemId);
       const active = m.id === cache.settings.method;
@@ -197,12 +318,75 @@ function renderCompare() {
   $('#compareTable').innerHTML = html;
 }
 
+// --- 部門 -----------------------------------------------------------
+$('#addCat').addEventListener('click', async () => {
+  const name = $('#catName').value.trim();
+  if (!name) return toast('部門名を入力してください', 'err');
+  try {
+    await api('/api/admin/categories', { method: 'POST', body: JSON.stringify({ name }) });
+    $('#catName').value = '';
+    await refreshMeta();
+    toast('部門を追加しました', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+function renderCategories() {
+  const box = $('#catList');
+  const cats = cache.categories || [];
+  if (!cats.length) { box.innerHTML = '<div class="empty">まだ部門はありません（なくても使えます）。</div>'; return; }
+  box.innerHTML = '';
+  for (const cat of cats) {
+    const count = cache.items.filter((i) => i.categoryId === cat.id).length;
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    row.innerHTML = `<div class="grow"><strong>${escapeHtml(cat.name)}</strong> <span class="muted">${count}件の出し物</span></div>`;
+    const edit = document.createElement('button');
+    edit.className = 'ghost'; edit.textContent = '名前変更';
+    edit.onclick = async () => {
+      const name = prompt('部門名', cat.name); if (name === null) return;
+      try { await api(`/api/admin/categories/${cat.id}`, { method: 'PUT', body: JSON.stringify({ name }) }); await refreshMeta(); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    const del = document.createElement('button');
+    del.className = 'danger'; del.textContent = '削除';
+    del.onclick = async () => {
+      if (!confirm(`部門「${cat.name}」を削除しますか？\n所属していた出し物は「部門なし」になります（票は消えません）。`)) return;
+      try { await api(`/api/admin/categories/${cat.id}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    row.append(edit, del);
+    box.appendChild(row);
+  }
+}
+
+// 出し物追加フォームと結果の部門フィルタのセレクトを部門一覧で更新
+function fillCategorySelects() {
+  const cats = cache.categories || [];
+  $('#itemCat').innerHTML = '<option value="">部門なし</option>' +
+    cats.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  $('#categoryFilterWrap').classList.toggle('hidden', !cats.length);
+  $('#categoryFilter').innerHTML = '<option value="">総合（すべての出し物）</option>' +
+    cats.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  if (![...$('#categoryFilter').options].some((o) => o.value === categoryFilter)) categoryFilter = '';
+  $('#categoryFilter').value = categoryFilter;
+}
+
+$('#categoryFilter').addEventListener('change', () => {
+  categoryFilter = $('#categoryFilter').value;
+  renderRanking();
+  renderCompare();
+  renderJudgeMatrix();
+});
+
 // --- 出し物 ---------------------------------------------------------
 $('#addItem').addEventListener('click', async () => {
   const name = $('#itemName').value.trim();
   if (!name) return toast('名前を入力してください', 'err');
   try {
-    await api('/api/admin/items', { method: 'POST', body: JSON.stringify({ name, description: $('#itemDesc').value }) });
+    await api('/api/admin/items', {
+      method: 'POST',
+      body: JSON.stringify({ name, description: $('#itemDesc').value, categoryId: $('#itemCat').value }),
+    });
     $('#itemName').value = ''; $('#itemDesc').value = '';
     await refreshMeta();
     toast('追加しました', 'ok');
@@ -213,11 +397,28 @@ function renderItems() {
   const box = $('#itemsList');
   if (!cache.items.length) { box.innerHTML = '<div class="empty">まだありません。</div>'; return; }
   box.innerHTML = '';
+  const cats = cache.categories || [];
   for (const item of cache.items) {
     const row = document.createElement('div');
     row.className = 'list-row';
     row.innerHTML = `<div class="grow"><strong>${escapeHtml(item.name)}</strong>` +
       (item.description ? ` <span class="muted">${escapeHtml(item.description)}</span>` : '') + '</div>';
+    if (cats.length) {
+      const sel = document.createElement('select');
+      sel.style.cssText = 'width:auto;max-width:180px;padding:8px 10px';
+      sel.innerHTML = '<option value="">部門なし</option>' +
+        cats.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      sel.value = item.categoryId || '';
+      sel.onchange = async () => {
+        try {
+          await api(`/api/admin/items/${item.id}`, { method: 'PUT', body: JSON.stringify({ categoryId: sel.value }) });
+          item.categoryId = sel.value;
+          renderCategories();
+          toast('部門を変更しました', 'ok');
+        } catch (e) { toast(e.message, 'err'); }
+      };
+      row.append(sel);
+    }
     const edit = document.createElement('button');
     edit.className = 'ghost'; edit.textContent = '編集';
     edit.onclick = async () => {
@@ -269,28 +470,256 @@ function renderCriteria() {
   }
 }
 
+// --- アンケート設問 ---------------------------------------------------
+$('#qType').addEventListener('change', () => {
+  $('#qOptionsWrap').classList.toggle('hidden', $('#qType').value !== 'choice');
+});
+
+$('#addQuestion').addEventListener('click', async () => {
+  const question = $('#qText').value.trim();
+  if (!question) return toast('質問文を入力してください', 'err');
+  const type = $('#qType').value;
+  const options = $('#qOptions').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  if (type === 'choice' && options.length < 2) return toast('選択肢は2つ以上入力してください', 'err');
+  try {
+    await api('/api/admin/survey-questions', {
+      method: 'POST',
+      body: JSON.stringify({ question, type, options, multiple: $('#qMultiple').checked }),
+    });
+    $('#qText').value = ''; $('#qOptions').value = ''; $('#qMultiple').checked = false;
+    await refreshMeta();
+    toast('設問を追加しました', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+function renderQuestions() {
+  const box = $('#questionList');
+  box.innerHTML = '';
+  const questions = cache.surveyQuestions || [];
+  if (!questions.length) {
+    box.innerHTML = '<div class="empty">設問はまだありません。設問を追加すると、来場者の画面にアンケートが表示されます。</div>';
+    return;
+  }
+  questions.forEach((q, idx) => {
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    const typeLabel = q.type === 'text' ? '記述式' : q.multiple ? '選択式（複数可）' : '選択式';
+    const detail = q.type === 'choice' ? ` <span class="muted">${q.options.map(escapeHtml).join(' / ')}</span>` : '';
+    row.innerHTML = `<div class="grow"><strong>Q${idx + 1}. ${escapeHtml(q.question)}</strong> <span class="pill" style="margin-left:6px">${typeLabel}</span><br>${detail}</div>`;
+    const edit = document.createElement('button');
+    edit.className = 'secondary'; edit.textContent = '編集';
+    edit.onclick = async () => {
+      const question = prompt('質問文', q.question);
+      if (question === null) return;
+      const body = { question: question.trim() || q.question };
+      if (q.type === 'choice') {
+        const opts = prompt('選択肢（カンマ区切り）\n※回答が集まったあとに変えると集計がずれます', q.options.join(','));
+        if (opts === null) return;
+        body.options = opts.split(',').map((s) => s.trim()).filter(Boolean);
+        if (body.options.length < 2) return toast('選択肢は2つ以上必要です', 'err');
+      }
+      try { await api(`/api/admin/survey-questions/${q.id}`, { method: 'PUT', body: JSON.stringify(body) }); await refreshMeta(); toast('更新しました', 'ok'); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    const del = document.createElement('button');
+    del.className = 'danger'; del.textContent = '削除';
+    del.onclick = async () => {
+      if (!confirm(`設問「${q.question}」を削除しますか？`)) return;
+      try { await api(`/api/admin/survey-questions/${q.id}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    row.append(edit, del);
+    box.appendChild(row);
+  });
+}
+
+// --- アンケート結果 ---------------------------------------------------
+$('#reloadSurveyBtn').addEventListener('click', loadSurveyResults);
+
+$('#resetSurveyBtn').addEventListener('click', async () => {
+  if (!confirm('アンケートの回答をすべて削除します。よろしいですか？')) return;
+  try {
+    await api('/api/admin/survey', { method: 'DELETE' });
+    await loadSurveyResults();
+    toast('回答をリセットしました', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+async function loadSurveyResults() {
+  const box = $('#surveyResults');
+  try {
+    const data = await api('/api/admin/survey');
+    $('#surveyTotal').textContent = data.total
+      ? `回答者 ${data.total}名（1人1回答・再送信で上書き）`
+      : 'まだ回答がありません。';
+    box.innerHTML = '';
+    data.questions.forEach((q, idx) => {
+      const block = document.createElement('div');
+      block.style.cssText = 'margin-top:18px;padding-top:14px;border-top:1px solid var(--line)';
+      const title = document.createElement('h3');
+      title.style.cssText = 'margin:0 0 10px;font-size:1.02rem';
+      title.textContent = `Q${idx + 1}. ${q.question}`;
+      block.appendChild(title);
+
+      if (q.type === 'choice') {
+        const canvas = drawSurveyChart(q);
+        canvas.style.cssText = 'width:100%;max-width:720px;height:auto;display:block';
+        block.appendChild(canvas);
+        const note = document.createElement('p');
+        note.className = 'muted';
+        note.style.cssText = 'margin:6px 0 8px;font-size:.85rem';
+        note.textContent = `回答 ${q.answered}名${q.multiple ? '（複数選択可）' : ''}`;
+        block.appendChild(note);
+        const save = document.createElement('button');
+        save.className = 'secondary'; save.textContent = '画像で保存';
+        save.onclick = () => downloadCanvas(canvas, `アンケートQ${idx + 1}.png`);
+        block.appendChild(save);
+      } else {
+        const answers = q.answers || [];
+        if (!answers.length) {
+          block.insertAdjacentHTML('beforeend', '<div class="empty">まだ回答がありません。</div>');
+        } else {
+          const list = document.createElement('div');
+          list.style.cssText = 'max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:10px';
+          list.innerHTML = answers.map((a) =>
+            `<div style="padding:10px 14px;border-bottom:1px solid var(--line);white-space:pre-wrap">${escapeHtml(a)}</div>`
+          ).join('');
+          block.appendChild(list);
+          const note = document.createElement('p');
+          note.className = 'muted';
+          note.style.cssText = 'margin:6px 0 0;font-size:.85rem';
+          note.textContent = `回答 ${answers.length}件`;
+          block.appendChild(note);
+        }
+      }
+      box.appendChild(block);
+    });
+    if (!data.questions.length) box.innerHTML = '<div class="empty">設問がありません。「アンケートの設問」から追加してください。</div>';
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// 選択式の集計を横棒グラフとして描画（2倍解像度でくっきり保存できる）
+function drawSurveyChart(q) {
+  const scale = 2;
+  const width = 720;
+  const rowH = 46;
+  const padTop = 52;
+  const padBottom = 16;
+  const height = padTop + q.options.length * rowH + padBottom;
+  const canvas = document.createElement('canvas');
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = '#16203a';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText(q.question, 20, 28);
+
+  const max = Math.max(...q.counts, 1);
+  const labelW = 170;
+  const barX = 20 + labelW + 10;
+  const barMaxW = width - barX - 70;
+  q.options.forEach((opt, i) => {
+    const y = padTop + i * rowH;
+    ctx.fillStyle = '#16203a';
+    ctx.font = '13px sans-serif';
+    let label = opt;
+    while (ctx.measureText(label).width > labelW && label.length > 1) label = label.slice(0, -1);
+    if (label !== opt) label += '…';
+    ctx.fillText(label, 20, y + 22);
+    ctx.fillStyle = '#eef2ff';
+    ctx.fillRect(barX, y + 8, barMaxW, 22);
+    ctx.fillStyle = '#4f46e5';
+    ctx.fillRect(barX, y + 8, barMaxW * (q.counts[i] / max), 22);
+    ctx.fillStyle = '#16203a';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(`${q.counts[i]}票`, barX + barMaxW + 8, y + 24);
+  });
+  return canvas;
+}
+
+function downloadCanvas(canvas, filename) {
+  canvas.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+}
+
 // --- 審査員×出し物の採点表 -------------------------------------------
+let judgeSelectValue = '';
+
+$('#judgeSelect').addEventListener('change', () => {
+  judgeSelectValue = $('#judgeSelect').value;
+  renderJudgeMatrix();
+});
+
+function matrixItems() {
+  if (!categoryFilter) return cache.items;
+  return cache.items.filter((i) => i.categoryId === categoryFilter);
+}
+
 function renderJudgeMatrix() {
   const box = $('#judgeMatrix');
   const names = resultsData.judgeNames || [];
-  if (!names.length || !cache.items.length) {
+  const sel = $('#judgeSelect');
+  sel.innerHTML = `<option value="">全員の一覧表（${names.length}名）</option>` +
+    names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)} さんの採点だけ表示</option>`).join('');
+  if (!names.includes(judgeSelectValue)) judgeSelectValue = '';
+  sel.value = judgeSelectValue;
+
+  const items = matrixItems();
+  if (!names.length || !items.length) {
     box.innerHTML = '<div class="empty">まだ採点委員の採点がありません。</div>';
     return;
   }
+  const critNames = cache.criteria.map((c) => c.name).join(' / ');
+
+  // 1人分の表示: 出し物×採点項目の表（人数が多いときに見やすい）
+  if (judgeSelectValue) {
+    $('#judgeMatrixLead').textContent = `${judgeSelectValue} さんの採点です。太字が総合点（重み付き合計）。`;
+    let html = '<table><thead><tr><th class="sticky-col">出し物</th><th class="num">総合点</th>';
+    for (const c of cache.criteria) html += `<th class="num">${escapeHtml(c.name)}</th>`;
+    html += '</tr></thead><tbody>';
+    let scored = 0;
+    for (const item of items) {
+      const cell = resultsData.judgeTable?.[judgeSelectValue]?.[item.id];
+      html += `<tr><td class="sticky-col"><strong>${escapeHtml(item.name)}</strong></td>`;
+      if (!cell) {
+        html += `<td class="num" style="color:var(--muted)">-</td>` +
+          cache.criteria.map(() => '<td class="num" style="color:var(--muted)">-</td>').join('');
+      } else {
+        scored++;
+        html += `<td class="num"><strong>${cell.total}</strong></td>` +
+          cache.criteria.map((c) => `<td class="num">${cell.scores?.[c.id] ?? '-'}</td>`).join('');
+      }
+      html += '</tr>';
+    }
+    html += `</tbody></table><p class="muted" style="margin:10px 0 0">${scored} / ${items.length} 件を採点済み</p>`;
+    box.innerHTML = html;
+    return;
+  }
+
+  // 全員の一覧表: 先頭列固定＋横スクロール
   $('#judgeMatrixLead').textContent =
-    `太字が総合点（重み付き合計）、カッコ内は項目別の点数（${cache.criteria.map((c) => c.name).join(' / ')}）。`;
-  let html = '<table><thead><tr><th>出し物</th>';
-  for (const n of names) html += `<th class="num">${escapeHtml(n)}</th>`;
+    `太字が総合点（重み付き合計）、カッコ内は項目別の点数（${critNames}）。人数が多いときは上のプルダウンで1人ずつ表示できます。表は横にスクロールできます。`;
+  let html = '<table><thead><tr><th class="sticky-col">出し物</th>';
+  for (const n of names) html += `<th class="num" style="white-space:nowrap">${escapeHtml(n)}</th>`;
   html += '</tr></thead><tbody>';
-  for (const item of cache.items) {
-    html += `<tr><td><strong>${escapeHtml(item.name)}</strong></td>`;
+  for (const item of items) {
+    html += `<tr><td class="sticky-col" style="white-space:nowrap"><strong>${escapeHtml(item.name)}</strong></td>`;
     for (const n of names) {
       const cell = resultsData.judgeTable?.[n]?.[item.id];
       if (!cell) {
         html += '<td class="num" style="color:var(--muted)">-</td>';
       } else {
         const detail = cache.criteria.map((c) => cell.scores?.[c.id] ?? '-').join(' / ');
-        html += `<td class="num"><strong>${cell.total}</strong><br><span class="muted" style="font-size:.78rem">(${detail})</span></td>`;
+        html += `<td class="num"><strong>${cell.total}</strong><br><span class="muted" style="font-size:.78rem;white-space:nowrap">(${detail})</span></td>`;
       }
     }
     html += '</tr>';
@@ -502,8 +931,7 @@ async function loadBackups() {
 async function refreshMeta() {
   const data = await api('/api/admin/settings');
   cache = data;
-  renderItems();
-  renderCriteria();
+  renderMeta();
   fillMethodSelect();
   if (!$('#tab-results').classList.contains('hidden')) await loadResults();
 }

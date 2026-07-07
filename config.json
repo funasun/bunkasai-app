@@ -26,7 +26,8 @@
     {
       "id": "i_e430ab0946f3",
       "name": "1年A組 お化け屋敷",
-      "description": "教室展示"
+      "description": "教室展示",
+      "categoryId": "cat_c458f377dc82"
     },
     {
       "id": "i_f772aaa53c11",
@@ -43,5 +44,34 @@
       "name": "軽音部 ライブ",
       "description": "中庭ステージ"
     }
-  ]
+  ],
+  "categories": [
+    {
+      "id": "cat_c458f377dc82",
+      "name": "展示部門"
+    }
+  ],
+  "survey": {
+    "questions": [
+      {
+        "id": "q_4db4d5ee1a71",
+        "type": "choice",
+        "question": "満足度を教えてください",
+        "options": [
+          "とても満足",
+          "満足",
+          "ふつう",
+          "不満"
+        ],
+        "multiple": false
+      },
+      {
+        "id": "q_85412076c0ff",
+        "type": "text",
+        "question": "感想を自由にお書きください",
+        "options": [],
+        "multiple": false
+      }
+    ]
+  }
 }

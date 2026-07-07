@@ -6,6 +6,7 @@ import {
   getSettings, saveSettings, setAdminPassword,
   listVotes, putVote, deleteVotesForItem, deleteVotesForVoter, clearVotes,
   listVoteBackups, restoreVoteBackup,
+  putSurveyResponse, listSurveyResponses, clearSurveyResponses,
   issueToken, isValidToken, verifyPassword, isLegacyHash, newId,
 } from './lib/store.js';
 import { METHODS, ranking, voteTotal } from './lib/aggregate.js';
@@ -60,7 +61,11 @@ app.get('/api/config', ah(async (req, res) => {
     title: cfg.title,
     scale: cfg.scale,
     criteria: cfg.criteria,
-    items: cfg.items.map((i) => ({ id: i.id, name: i.name, description: i.description || '' })),
+    items: cfg.items.map((i) => ({ id: i.id, name: i.name, description: i.description || '', categoryId: i.categoryId || '' })),
+    categories: (cfg.categories || []).map((c) => ({ id: c.id, name: c.name })),
+    survey: (cfg.survey?.questions || []).map((q) => ({
+      id: q.id, type: q.type, question: q.question, options: q.options || [], multiple: q.multiple === true,
+    })),
     votingOpen: settings.votingOpen !== false,
     visitorVoteMode: settings.visitorVoteMode === 'choice' ? 'choice' : 'score',
     choiceMax: Math.max(1, Number(settings.choiceMax) || 3),
@@ -153,6 +158,40 @@ app.post('/api/vote', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// 来場者アンケートの回答（1人1回答、再送信で上書き）
+app.post('/api/survey', ah(async (req, res) => {
+  const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
+  if (settings.votingOpen === false) {
+    return res.status(403).json({ error: '現在は回答を受け付けていません' });
+  }
+  const { voterId, answers } = req.body || {};
+  if (!voterId || typeof voterId !== 'string') {
+    return res.status(400).json({ error: 'voterId が必要です' });
+  }
+  const questions = cfg.survey?.questions || [];
+  if (!questions.length) return res.status(400).json({ error: 'アンケートは実施していません' });
+
+  const clean = {};
+  for (const q of questions) {
+    const v = answers?.[q.id];
+    if (v === undefined || v === null || v === '') continue; // 未回答は許容
+    if (q.type === 'text') {
+      const s = String(v).trim().slice(0, 2000);
+      if (s) clean[q.id] = s;
+    } else {
+      const idxs = (Array.isArray(v) ? v : [v]).map(Number);
+      const valid = [...new Set(idxs)].filter((i) => Number.isInteger(i) && i >= 0 && i < q.options.length);
+      if (!valid.length) continue;
+      clean[q.id] = q.multiple ? valid : valid[0];
+    }
+  }
+  if (Object.keys(clean).length === 0) {
+    return res.status(400).json({ error: '少なくとも1問は回答してください' });
+  }
+  await putSurveyResponse({ voterId, answers: clean });
+  res.json({ ok: true });
+}));
+
 // --- 管理・結果（要認証） -------------------------------------------
 
 async function adminSettingsPayload() {
@@ -167,6 +206,8 @@ async function adminSettingsPayload() {
     },
     criteria: cfg.criteria,
     items: cfg.items,
+    categories: cfg.categories || [],
+    surveyQuestions: cfg.survey?.questions || [],
     methods: METHODS,
   };
 }
@@ -219,9 +260,10 @@ app.post('/api/admin/reload-config', requireAuth, ah(async (req, res) => {
 // 出し物 CRUD
 app.post('/api/admin/items', requireAuth, ah(async (req, res) => {
   const cfg = await getConfig();
-  const { name, description } = req.body || {};
+  const { name, description, categoryId } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: '名前が必要です' });
   const item = { id: newId('i'), name: name.trim(), description: (description || '').trim() };
+  if (categoryId && (cfg.categories || []).some((c) => c.id === categoryId)) item.categoryId = categoryId;
   cfg.items.push(item);
   await saveConfig(cfg);
   res.json(item);
@@ -231,11 +273,128 @@ app.put('/api/admin/items/:id', requireAuth, ah(async (req, res) => {
   const cfg = await getConfig();
   const item = cfg.items.find((i) => i.id === req.params.id);
   if (!item) return res.status(404).json({ error: '見つかりません' });
-  const { name, description } = req.body || {};
+  const { name, description, categoryId } = req.body || {};
   if (typeof name === 'string' && name.trim()) item.name = name.trim();
   if (typeof description === 'string') item.description = description.trim();
+  if (categoryId !== undefined) {
+    if (categoryId && (cfg.categories || []).some((c) => c.id === categoryId)) item.categoryId = categoryId;
+    else delete item.categoryId;
+  }
   await saveConfig(cfg);
   res.json(item);
+}));
+
+// 部門 CRUD（削除時は所属していた出し物を「部門なし」に戻す）
+app.post('/api/admin/categories', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: '部門名が必要です' });
+  const cat = { id: newId('cat'), name: name.trim() };
+  cfg.categories = cfg.categories || [];
+  cfg.categories.push(cat);
+  await saveConfig(cfg);
+  res.json(cat);
+}));
+
+app.put('/api/admin/categories/:id', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const cat = (cfg.categories || []).find((c) => c.id === req.params.id);
+  if (!cat) return res.status(404).json({ error: '見つかりません' });
+  const { name } = req.body || {};
+  if (typeof name === 'string' && name.trim()) cat.name = name.trim();
+  await saveConfig(cfg);
+  res.json(cat);
+}));
+
+app.delete('/api/admin/categories/:id', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const idx = (cfg.categories || []).findIndex((c) => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '見つかりません' });
+  cfg.categories.splice(idx, 1);
+  for (const item of cfg.items) {
+    if (item.categoryId === req.params.id) delete item.categoryId;
+  }
+  await saveConfig(cfg);
+  res.json({ ok: true });
+}));
+
+// アンケート設問 CRUD
+function cleanQuestionInput(body) {
+  const type = body.type === 'text' ? 'text' : 'choice';
+  const question = String(body.question || '').trim();
+  const options = (Array.isArray(body.options) ? body.options : [])
+    .map((o) => String(o).trim()).filter(Boolean);
+  return { type, question, options, multiple: body.multiple === true };
+}
+
+app.post('/api/admin/survey-questions', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const q = cleanQuestionInput(req.body || {});
+  if (!q.question) return res.status(400).json({ error: '質問文が必要です' });
+  if (q.type === 'choice' && q.options.length < 2) {
+    return res.status(400).json({ error: '選択式は選択肢を2つ以上入れてください' });
+  }
+  const question = { id: newId('q'), ...q };
+  cfg.survey = cfg.survey || { questions: [] };
+  cfg.survey.questions.push(question);
+  await saveConfig(cfg);
+  res.json(question);
+}));
+
+app.put('/api/admin/survey-questions/:id', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const q = (cfg.survey?.questions || []).find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: '見つかりません' });
+  const clean = cleanQuestionInput({ ...q, ...req.body });
+  if (!clean.question) return res.status(400).json({ error: '質問文が必要です' });
+  if (clean.type === 'choice' && clean.options.length < 2) {
+    return res.status(400).json({ error: '選択式は選択肢を2つ以上入れてください' });
+  }
+  Object.assign(q, clean);
+  await saveConfig(cfg);
+  res.json(q);
+}));
+
+app.delete('/api/admin/survey-questions/:id', requireAuth, ah(async (req, res) => {
+  const cfg = await getConfig();
+  const list = cfg.survey?.questions || [];
+  const idx = list.findIndex((x) => x.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '見つかりません' });
+  list.splice(idx, 1);
+  await saveConfig(cfg);
+  res.json({ ok: true });
+}));
+
+// アンケート結果（選択式は選択肢ごとの件数、記述式は回答一覧）
+app.get('/api/admin/survey', requireAuth, ah(async (req, res) => {
+  const [cfg, responses] = await Promise.all([getConfig(), listSurveyResponses()]);
+  const questions = (cfg.survey?.questions || []).map((q) => {
+    if (q.type === 'text') {
+      const answers = responses
+        .map((r) => r.answers?.[q.id])
+        .filter((v) => typeof v === 'string' && v.trim());
+      return { id: q.id, type: q.type, question: q.question, answers, answered: answers.length };
+    }
+    const counts = q.options.map(() => 0);
+    let answered = 0;
+    for (const r of responses) {
+      const v = r.answers?.[q.id];
+      if (v === undefined || v === null) continue;
+      const idxs = Array.isArray(v) ? v : [v];
+      let hit = false;
+      for (const i of idxs) {
+        if (Number.isInteger(i) && i >= 0 && i < counts.length) { counts[i]++; hit = true; }
+      }
+      if (hit) answered++;
+    }
+    return { id: q.id, type: q.type, question: q.question, options: q.options, multiple: q.multiple === true, counts, answered };
+  });
+  res.json({ total: responses.length, questions });
+}));
+
+app.delete('/api/admin/survey', requireAuth, ah(async (req, res) => {
+  await clearSurveyResponses();
+  res.json({ ok: true });
 }));
 
 app.delete('/api/admin/items/:id', requireAuth, ah(async (req, res) => {

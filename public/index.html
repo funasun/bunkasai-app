@@ -63,8 +63,27 @@
         <span class="progress-label" id="progressLabel">0 / 0</span>
       </div>
       <div class="item-grid" id="itemList"></div>
+      <div id="surveyBanner" class="hidden" style="margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--primary-soft)">
+        <strong>文化祭アンケートにご協力ください</strong>
+        <p class="muted" style="margin:6px 0 10px">1分で終わります。回答はあとから書き直せます。</p>
+        <button class="secondary" type="button" id="openSurveyBtn">アンケートに答える</button>
+      </div>
       <div class="row" style="margin-top:18px">
         <button class="ghost" id="changeVoterBtn">区分を変更する</button>
+      </div>
+    </section>
+
+    <!-- アンケート -->
+    <section class="card hidden" id="surveyCard">
+      <button class="back-link" id="surveyBackBtn" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        一覧に戻る
+      </button>
+      <h2>文化祭アンケート</h2>
+      <p class="section-lead">答えられる質問だけでOKです。送信後も書き直せます。</p>
+      <div id="surveyForm"></div>
+      <div class="row" style="margin-top:20px">
+        <button id="submitSurvey" style="width:100%;max-width:420px;margin:0 auto">アンケートを送信</button>
       </div>
     </section>
 
