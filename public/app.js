@@ -32,6 +32,9 @@ async function loadConfig() {
   state.config = await res.json();
   $('#title').textContent = state.config.title;
   document.title = state.config.title;
+  const open = state.config.votingOpen !== false;
+  $('#closedNotice').classList.toggle('hidden', open);
+  $('#startArea').classList.toggle('hidden', !open);
 }
 
 function show(cardId) {

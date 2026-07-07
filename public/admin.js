@@ -292,8 +292,32 @@ function renderJudgeMatrix() {
 }
 
 // --- 設定 -----------------------------------------------------------
+function renderVotingToggle() {
+  const open = cache.settings.votingOpen !== false;
+  [...$('#votingToggle').children].forEach((b) => {
+    b.classList.toggle('active', (b.dataset.open === 'true') === open);
+  });
+  $('#votingToggleNote').textContent = open
+    ? '現在は投票を受け付けています。'
+    : '現在は投票を停止中です。投票画面には「受け付けていません」と表示されます。';
+}
+
+$('#votingToggle').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const open = btn.dataset.open === 'true';
+  if ((cache.settings.votingOpen !== false) === open) return;
+  try {
+    await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ votingOpen: open }) });
+    cache.settings.votingOpen = open;
+    renderVotingToggle();
+    toast(open ? '投票の受付を開始しました' : '投票の受付を停止しました', 'ok');
+  } catch (e2) { toast(e2.message, 'err'); }
+});
+
 function fillSettingsForm() {
   const s = cache.settings;
+  renderVotingToggle();
   $('#setTitle').value = s.title;
   $('#setJudgeCode').value = s.judgeCode || '';
   $('#newPassword').value = s.adminPassword || '';

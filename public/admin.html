@@ -120,6 +120,15 @@
       <!-- 設定 -->
       <section class="tab hidden" id="tab-settings">
         <div class="card">
+          <h2>投票の受付</h2>
+          <p class="section-lead">停止中は来場者・採点委員とも投票できません。文化祭の前後は「停止中」にしておくと安心です。</p>
+          <div class="segmented" id="votingToggle" style="max-width:320px">
+            <button data-open="true" type="button">受付中</button>
+            <button data-open="false" type="button">停止中</button>
+          </div>
+          <p class="muted" id="votingToggleNote" style="margin:10px 0 0"></p>
+        </div>
+        <div class="card">
           <h2>基本設定</h2>
           <label>タイトル</label>
           <input id="setTitle" />

@@ -55,12 +55,13 @@ app.post('/api/login', ah(async (req, res) => {
 // --- 投票端末向け（結果は一切返さない） ------------------------------
 
 app.get('/api/config', ah(async (req, res) => {
-  const cfg = await getConfig();
+  const [cfg, settings] = await Promise.all([getConfig(), getSettings()]);
   res.json({
     title: cfg.title,
     scale: cfg.scale,
     criteria: cfg.criteria,
     items: cfg.items.map((i) => ({ id: i.id, name: i.name, description: i.description || '' })),
+    votingOpen: settings.votingOpen !== false,
   });
 }));
 
@@ -72,6 +73,9 @@ const normCode = (s) => String(s || '')
 // 審査員コードの事前確認（採点開始時のチェック用）
 app.post('/api/judge-verify', ah(async (req, res) => {
   const settings = await getSettings();
+  if (settings.votingOpen === false) {
+    return res.status(403).json({ error: '現在は投票を受け付けていません' });
+  }
   const { code, name } = req.body || {};
   if (!String(name || '').trim()) {
     return res.status(400).json({ error: 'お名前を入力してください' });
@@ -84,6 +88,9 @@ app.post('/api/judge-verify', ah(async (req, res) => {
 
 app.post('/api/vote', ah(async (req, res) => {
   const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
+  if (settings.votingOpen === false) {
+    return res.status(403).json({ error: '現在は投票を受け付けていません' });
+  }
   const { voterType, voterId, itemId, scores, judgeCode } = req.body || {};
   if (!['judge', 'visitor'].includes(voterType)) {
     return res.status(400).json({ error: 'voterType が不正です' });
@@ -145,8 +152,9 @@ app.get('/api/admin/settings', requireAuth, ah(async (req, res) => {
 
 app.put('/api/admin/settings', requireAuth, ah(async (req, res) => {
   const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
-  const { title, scale, method, bayesianPrior, trimRatio, judgeCode } = req.body || {};
+  const { title, scale, method, bayesianPrior, trimRatio, judgeCode, votingOpen } = req.body || {};
   if (typeof title === 'string') cfg.title = title;
+  if (typeof votingOpen === 'boolean') settings.votingOpen = votingOpen;
   if (typeof judgeCode === 'string' && normCode(judgeCode)) settings.judgeCode = normCode(judgeCode);
   if (scale && typeof scale === 'object') {
     const min = Number(scale.min), max = Number(scale.max), step = Number(scale.step);
