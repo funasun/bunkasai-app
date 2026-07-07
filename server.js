@@ -5,6 +5,7 @@ import {
   getConfig, saveConfig, reloadConfig,
   getSettings, saveSettings, setAdminPassword,
   listVotes, putVote, deleteVotesForItem, clearVotes,
+  listVoteBackups, restoreVoteBackup,
   issueToken, isValidToken, verifyPassword, isLegacyHash, newId,
 } from './lib/store.js';
 import { METHODS, ranking, voteTotal } from './lib/aggregate.js';
@@ -76,7 +77,7 @@ app.post('/api/judge-verify', ah(async (req, res) => {
     return res.status(400).json({ error: 'お名前を入力してください' });
   }
   if (!normCode(code) || normCode(code) !== normCode(settings.judgeCode)) {
-    return res.status(401).json({ error: '審査員コードが違います' });
+    return res.status(401).json({ error: '採点委員コードが違います' });
   }
   res.json({ ok: true });
 }));
@@ -95,7 +96,7 @@ app.post('/api/vote', ah(async (req, res) => {
     const name = voterId.replace(/^judge:/, '').trim();
     if (!name) return res.status(400).json({ error: 'お名前が必要です' });
     if (normCode(judgeCode) !== normCode(settings.judgeCode)) {
-      return res.status(403).json({ error: '審査員コードが違います' });
+      return res.status(403).json({ error: '採点委員コードが違います' });
     }
   }
   const item = cfg.items.find((i) => i.id === itemId);
@@ -304,10 +305,22 @@ app.get('/api/admin/export.csv', requireAuth, ah(async (req, res) => {
   res.send('﻿' + csv); // BOM付きでExcel対応
 }));
 
-// 投票データのリセット
+// 投票データのリセット（直近2世代までバックアップから復元できる）
 app.delete('/api/admin/votes', requireAuth, ah(async (req, res) => {
   await clearVotes();
-  res.json({ ok: true });
+  res.json({ ok: true, backups: await listVoteBackups() });
+}));
+
+app.get('/api/admin/vote-backups', requireAuth, ah(async (req, res) => {
+  res.json({ backups: await listVoteBackups() });
+}));
+
+app.post('/api/admin/vote-backups/:slot/restore', requireAuth, ah(async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(400).json({ error: 'slot が不正です' });
+  const count = await restoreVoteBackup(slot);
+  if (count === null) return res.status(404).json({ error: 'バックアップが見つかりません' });
+  res.json({ ok: true, count });
 }));
 
 export default app;

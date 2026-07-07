@@ -92,10 +92,10 @@ $('#startBtn').addEventListener('click', async () => {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    return toast(data.error || '審査員コードが違います', 'err');
+    return toast(data.error || '採点委員コードが違います', 'err');
   }
   state.judgeCode = code;
-  startAs('judge', 'judge:' + name, `審査員 · ${name}`);
+  startAs('judge', 'judge:' + name, `採点委員 · ${name}`);
 });
 
 $('#changeVoterBtn').addEventListener('click', () => show('setupCard'));

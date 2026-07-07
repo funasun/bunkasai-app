@@ -52,7 +52,7 @@
           <h2>集計</h2>
           <p class="section-lead">対象と集計方法を選ぶと、順位が即座に再計算されます。</p>
           <div class="segmented" id="voterFilter" style="margin-bottom:6px">
-            <button data-vt="judge" class="active">審査員</button>
+            <button data-vt="judge" class="active">採点委員</button>
             <button data-vt="visitor">来場者</button>
             <button data-vt="all">全体</button>
           </div>
@@ -60,7 +60,7 @@
           <select id="methodSelect"></select>
           <div class="method-desc" id="methodDesc"></div>
           <div class="stat-row">
-            <div class="stat"><div class="s-label">審査員の票</div><div class="s-value" id="statJudge">0</div></div>
+            <div class="stat"><div class="s-label">採点委員の票</div><div class="s-value" id="statJudge">0</div></div>
             <div class="stat"><div class="s-label">来場者の票</div><div class="s-value" id="statVisitor">0</div></div>
             <div class="stat"><div class="s-label">出し物</div><div class="s-value" id="statItems">0</div></div>
           </div>
@@ -75,8 +75,8 @@
           <div class="table-scroll" id="compareTable"></div>
         </div>
         <div class="card">
-          <h2>審査員の採点表</h2>
-          <p class="section-lead" id="judgeMatrixLead">審査員ごと・出し物ごとの点数の一覧です。太字が総合点（重み付き合計）、カッコ内は項目別の点数。</p>
+          <h2>採点委員の採点表</h2>
+          <p class="section-lead" id="judgeMatrixLead">採点委員ごと・出し物ごとの点数の一覧です。太字が総合点（重み付き合計）、カッコ内は項目別の点数。</p>
           <div class="table-scroll" id="judgeMatrix"></div>
         </div>
       </section>
@@ -114,9 +114,9 @@
           <h2>基本設定</h2>
           <label>タイトル</label>
           <input id="setTitle" />
-          <label>審査員コード</label>
+          <label>採点委員コード</label>
           <input id="setJudgeCode" autocomplete="off" />
-          <p class="muted" style="margin:6px 0 0">審査員として採点するための合言葉です。審査員のかたにだけ伝えてください。</p>
+          <p class="muted" style="margin:6px 0 0">文化祭採点委員（生徒会・教員）として採点するための合言葉です。採点委員のかたにだけ伝えてください。</p>
           <h2 style="margin-top:26px">点数段階</h2>
           <p class="section-lead">投票画面に表示する点数ボタンの範囲です。</p>
           <div class="grid2">
@@ -146,7 +146,10 @@
             <button class="secondary" type="button" id="reloadConfigBtn">config.json を再読み込み</button>
             <button id="resetVotes" class="danger">全投票をリセット</button>
           </div>
-          <p class="muted" style="margin-top:10px">出し物・採点項目・審査員・点数段階はリポジトリ直下の config.json を直接編集しても変更できます。編集後は再読み込みを押してください。リセットは元に戻せません。</p>
+          <p class="muted" style="margin-top:10px">出し物・採点項目・点数段階はリポジトリ直下の config.json を直接編集しても変更できます。編集後は再読み込みを押してください。</p>
+          <h2 style="margin-top:22px">リセットの復元</h2>
+          <p class="section-lead">「全投票をリセット」しても、直近2回分はリセット時点の票に戻せます。</p>
+          <div id="backupList"></div>
         </div>
       </section>
     </div>

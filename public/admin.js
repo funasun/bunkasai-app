@@ -85,6 +85,7 @@ async function boot() {
   renderItems();
   renderCriteria();
   await loadResults();
+  await loadBackups();
 }
 
 function fillMethodSelect() {
@@ -265,7 +266,7 @@ function renderJudgeMatrix() {
   const box = $('#judgeMatrix');
   const names = resultsData.judgeNames || [];
   if (!names.length || !cache.items.length) {
-    box.innerHTML = '<div class="empty">まだ審査員の採点がありません。</div>';
+    box.innerHTML = '<div class="empty">まだ採点委員の採点がありません。</div>';
     return;
   }
   $('#judgeMatrixLead').textContent =
@@ -355,10 +356,53 @@ $('#exportBtn').addEventListener('click', async () => {
 });
 
 $('#resetVotes').addEventListener('click', async () => {
-  if (!confirm('全ての投票データを削除します。よろしいですか？')) return;
-  try { await api('/api/admin/votes', { method: 'DELETE' }); await loadResults(); toast('リセットしました', 'ok'); }
-  catch (e) { toast(e.message, 'err'); }
+  if (!confirm('全ての投票データを削除します。よろしいですか？\n（直近2回分のリセットは「リセットの復元」から元に戻せます）')) return;
+  try {
+    const data = await api('/api/admin/votes', { method: 'DELETE' });
+    renderBackups(data.backups);
+    await loadResults();
+    toast('リセットしました', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
 });
+
+// --- リセットの復元 ---------------------------------------------------
+function renderBackups(backups) {
+  const box = $('#backupList');
+  if (!backups || !backups.length) {
+    box.innerHTML = '<div class="empty">復元できるバックアップはまだありません。</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const b of backups) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap';
+    const label = document.createElement('span');
+    label.className = 'muted';
+    label.textContent = `${b.slot === 1 ? '直前のリセット' : '2つ前のリセット'} · ${new Date(b.at).toLocaleString('ja-JP')} · ${b.count}票`;
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.type = 'button';
+    btn.textContent = 'この時点に復元';
+    btn.addEventListener('click', async () => {
+      if (!confirm(`リセット時点の ${b.count}票 に戻します。今ある票は上書きされます。よろしいですか？`)) return;
+      try {
+        const data = await api(`/api/admin/vote-backups/${b.slot}/restore`, { method: 'POST' });
+        await loadResults();
+        toast(`${data.count}票を復元しました`, 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    row.appendChild(label);
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+
+async function loadBackups() {
+  try {
+    renderBackups((await api('/api/admin/vote-backups')).backups);
+  } catch { /* 表示できなくても他の機能に影響させない */ }
+}
 
 async function refreshMeta() {
   const data = await api('/api/admin/settings');
