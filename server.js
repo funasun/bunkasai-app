@@ -58,6 +58,11 @@ app.get('/api/config', ah(async (req, res) => {
   });
 }));
 
+// 全角数字・空白の揺れを吸収してコードを比較する
+const normCode = (s) => String(s || '')
+  .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+  .replace(/\s/g, '');
+
 // 審査員コードの事前確認（採点開始時のチェック用）
 app.post('/api/judge-verify', ah(async (req, res) => {
   const settings = await getSettings();
@@ -65,7 +70,7 @@ app.post('/api/judge-verify', ah(async (req, res) => {
   if (!String(name || '').trim()) {
     return res.status(400).json({ error: 'お名前を入力してください' });
   }
-  if (!code || String(code).trim() !== settings.judgeCode) {
+  if (!normCode(code) || normCode(code) !== normCode(settings.judgeCode)) {
     return res.status(401).json({ error: '審査員コードが違います' });
   }
   res.json({ ok: true });
@@ -84,7 +89,7 @@ app.post('/api/vote', ah(async (req, res) => {
   if (voterType === 'judge') {
     const name = voterId.replace(/^judge:/, '').trim();
     if (!name) return res.status(400).json({ error: 'お名前が必要です' });
-    if (String(judgeCode || '').trim() !== settings.judgeCode) {
+    if (normCode(judgeCode) !== normCode(settings.judgeCode)) {
       return res.status(403).json({ error: '審査員コードが違います' });
     }
   }
@@ -131,7 +136,7 @@ app.put('/api/admin/settings', requireAuth, ah(async (req, res) => {
   const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
   const { title, scale, method, bayesianPrior, trimRatio, judgeCode } = req.body || {};
   if (typeof title === 'string') cfg.title = title;
-  if (typeof judgeCode === 'string' && judgeCode.trim()) settings.judgeCode = judgeCode.trim();
+  if (typeof judgeCode === 'string' && normCode(judgeCode)) settings.judgeCode = normCode(judgeCode);
   if (scale && typeof scale === 'object') {
     const min = Number(scale.min), max = Number(scale.max), step = Number(scale.step);
     if ([min, max, step].some(Number.isNaN) || min >= max || step <= 0) {
