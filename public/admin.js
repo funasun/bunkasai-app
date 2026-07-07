@@ -202,7 +202,33 @@ $('#exportRankingImg').addEventListener('click', () => {
   const rows = applyCategoryFilter(resultsData?.[voterFilter]?.current || []);
   if (!rows.length) return toast('出力できる順位がありません', 'err');
   const canvas = drawRankingImage(rows);
-  downloadCanvas(canvas, `順位_${categoryLabel()}_${voterFilter === 'judge' ? '採点委員' : '来場者'}.png`);
+  showImagePreview(canvas, `順位_${categoryLabel()}_${voterFilter === 'judge' ? '採点委員' : '来場者'}.png`);
+});
+
+// --- 画像保存前のプレビュー -------------------------------------------
+let modalCanvas = null;
+let modalFilename = '';
+
+function showImagePreview(canvas, filename) {
+  modalCanvas = canvas;
+  modalFilename = filename;
+  const body = $('#imgModalBody');
+  body.innerHTML = '';
+  body.appendChild(canvas);
+  $('#imgModal').classList.remove('hidden');
+}
+function closeImageModal() {
+  $('#imgModal').classList.add('hidden');
+  $('#imgModalBody').innerHTML = '';
+  modalCanvas = null;
+}
+$('#imgModalClose').addEventListener('click', closeImageModal);
+$('#imgModal').addEventListener('click', (e) => { if (e.target === $('#imgModal')) closeImageModal(); });
+$('#imgModalSave').addEventListener('click', () => {
+  if (!modalCanvas) return;
+  downloadCanvas(modalCanvas, modalFilename);
+  toast('画像を保存しました', 'ok');
+  closeImageModal();
 });
 
 function drawRankingImage(rows) {
@@ -319,14 +345,29 @@ function renderCompare() {
 }
 
 // --- 部門 -----------------------------------------------------------
+let editingCatId = null;
+
+function resetCatForm() {
+  editingCatId = null;
+  $('#catName').value = '';
+  $('#addCat').textContent = '部門を追加';
+  $('#cancelEditCat').classList.add('hidden');
+}
+$('#cancelEditCat').addEventListener('click', resetCatForm);
+
 $('#addCat').addEventListener('click', async () => {
   const name = $('#catName').value.trim();
   if (!name) return toast('部門名を入力してください', 'err');
   try {
-    await api('/api/admin/categories', { method: 'POST', body: JSON.stringify({ name }) });
-    $('#catName').value = '';
+    if (editingCatId) {
+      await api(`/api/admin/categories/${editingCatId}`, { method: 'PUT', body: JSON.stringify({ name }) });
+      toast('部門名を変更しました', 'ok');
+    } else {
+      await api('/api/admin/categories', { method: 'POST', body: JSON.stringify({ name }) });
+      toast('部門を追加しました', 'ok');
+    }
+    resetCatForm();
     await refreshMeta();
-    toast('部門を追加しました', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 });
 
@@ -342,17 +383,23 @@ function renderCategories() {
     row.innerHTML = `<div class="grow"><strong>${escapeHtml(cat.name)}</strong> <span class="muted">${count}件の出し物</span></div>`;
     const edit = document.createElement('button');
     edit.className = 'ghost'; edit.textContent = '名前変更';
-    edit.onclick = async () => {
-      const name = prompt('部門名', cat.name); if (name === null) return;
-      try { await api(`/api/admin/categories/${cat.id}`, { method: 'PUT', body: JSON.stringify({ name }) }); await refreshMeta(); }
-      catch (e) { toast(e.message, 'err'); }
+    edit.onclick = () => {
+      editingCatId = cat.id;
+      $('#catName').value = cat.name;
+      $('#addCat').textContent = '名前を更新';
+      $('#cancelEditCat').classList.remove('hidden');
+      $('#catName').focus();
     };
     const del = document.createElement('button');
     del.className = 'danger'; del.textContent = '削除';
     del.onclick = async () => {
       if (!confirm(`部門「${cat.name}」を削除しますか？\n所属していた出し物は「部門なし」になります（票は消えません）。`)) return;
-      try { await api(`/api/admin/categories/${cat.id}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
-      catch (e) { toast(e.message, 'err'); }
+      try {
+        await api(`/api/admin/categories/${cat.id}`, { method: 'DELETE' });
+        if (editingCatId === cat.id) resetCatForm();
+        await refreshMeta();
+        toast('削除しました', 'ok');
+      } catch (e) { toast(e.message, 'err'); }
     };
     row.append(edit, del);
     box.appendChild(row);
@@ -379,63 +426,106 @@ $('#categoryFilter').addEventListener('change', () => {
 });
 
 // --- 出し物 ---------------------------------------------------------
+let editingItemId = null;
+
+function resetItemForm() {
+  editingItemId = null;
+  $('#itemName').value = '';
+  $('#itemDesc').value = '';
+  $('#itemCat').value = '';
+  $('#itemFormTitle').textContent = '出し物を追加';
+  $('#addItem').textContent = '追加';
+  $('#cancelEditItem').classList.add('hidden');
+}
+$('#cancelEditItem').addEventListener('click', resetItemForm);
+
 $('#addItem').addEventListener('click', async () => {
   const name = $('#itemName').value.trim();
   if (!name) return toast('名前を入力してください', 'err');
+  const body = JSON.stringify({ name, description: $('#itemDesc').value, categoryId: $('#itemCat').value });
   try {
-    await api('/api/admin/items', {
-      method: 'POST',
-      body: JSON.stringify({ name, description: $('#itemDesc').value, categoryId: $('#itemCat').value }),
-    });
-    $('#itemName').value = ''; $('#itemDesc').value = '';
+    if (editingItemId) {
+      await api(`/api/admin/items/${editingItemId}`, { method: 'PUT', body });
+      toast('出し物を更新しました', 'ok');
+    } else {
+      await api('/api/admin/items', { method: 'POST', body });
+      toast('追加しました', 'ok');
+    }
+    resetItemForm();
     await refreshMeta();
-    toast('追加しました', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 });
 
 function renderItems() {
   const box = $('#itemsList');
-  if (!cache.items.length) { box.innerHTML = '<div class="empty">まだありません。</div>'; return; }
+  $('#itemsListTitle').textContent = `登録済みの出し物（${cache.items.length}件）`;
+  if (!cache.items.length) {
+    box.innerHTML = '<div class="empty">まだ出し物がありません。上のフォームから追加してください。</div>';
+    return;
+  }
   box.innerHTML = '';
   const cats = cache.categories || [];
-  for (const item of cache.items) {
-    const row = document.createElement('div');
-    row.className = 'list-row';
-    row.innerHTML = `<div class="grow"><strong>${escapeHtml(item.name)}</strong>` +
-      (item.description ? ` <span class="muted">${escapeHtml(item.description)}</span>` : '') + '</div>';
+  const groups = cats.length ? [...cats, { id: '', name: '部門なし' }] : [{ id: '', name: '' }];
+  for (const g of groups) {
+    const items = cats.length
+      ? cache.items.filter((i) => (i.categoryId || '') === g.id)
+      : cache.items;
+    if (!items.length) continue;
     if (cats.length) {
-      const sel = document.createElement('select');
-      sel.style.cssText = 'width:auto;max-width:180px;padding:8px 10px';
-      sel.innerHTML = '<option value="">部門なし</option>' +
-        cats.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-      sel.value = item.categoryId || '';
-      sel.onchange = async () => {
+      const h = document.createElement('div');
+      h.className = 'cat-heading';
+      h.textContent = `${g.name}（${items.length}件）`;
+      box.appendChild(h);
+    }
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'list-row';
+      row.innerHTML = `<div class="grow"><strong>${escapeHtml(item.name)}</strong>` +
+        (item.description ? ` <span class="muted">${escapeHtml(item.description)}</span>` : '') + '</div>';
+      if (cats.length) {
+        const sel = document.createElement('select');
+        sel.style.cssText = 'width:auto;max-width:180px;padding:8px 10px';
+        sel.title = '部門を変更';
+        sel.innerHTML = '<option value="">部門なし</option>' +
+          cats.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        sel.value = item.categoryId || '';
+        sel.onchange = async () => {
+          try {
+            await api(`/api/admin/items/${item.id}`, { method: 'PUT', body: JSON.stringify({ categoryId: sel.value }) });
+            item.categoryId = sel.value;
+            renderCategories();
+            renderItems();
+            toast('部門を変更しました', 'ok');
+          } catch (e) { toast(e.message, 'err'); }
+        };
+        row.append(sel);
+      }
+      const edit = document.createElement('button');
+      edit.className = 'ghost'; edit.textContent = '編集';
+      edit.onclick = () => {
+        editingItemId = item.id;
+        $('#itemName').value = item.name;
+        $('#itemDesc').value = item.description || '';
+        $('#itemCat').value = item.categoryId || '';
+        $('#itemFormTitle').textContent = `出し物を編集中: ${item.name}`;
+        $('#addItem').textContent = 'この内容で更新';
+        $('#cancelEditItem').classList.remove('hidden');
+        $('#itemFormTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      const del = document.createElement('button');
+      del.className = 'danger'; del.textContent = '削除';
+      del.onclick = async () => {
+        if (!confirm(`「${item.name}」を削除しますか？この出し物への投票も消えます。`)) return;
         try {
-          await api(`/api/admin/items/${item.id}`, { method: 'PUT', body: JSON.stringify({ categoryId: sel.value }) });
-          item.categoryId = sel.value;
-          renderCategories();
-          toast('部門を変更しました', 'ok');
+          await api(`/api/admin/items/${item.id}`, { method: 'DELETE' });
+          if (editingItemId === item.id) resetItemForm();
+          await refreshMeta();
+          toast('削除しました', 'ok');
         } catch (e) { toast(e.message, 'err'); }
       };
-      row.append(sel);
+      row.append(edit, del);
+      box.appendChild(row);
     }
-    const edit = document.createElement('button');
-    edit.className = 'ghost'; edit.textContent = '編集';
-    edit.onclick = async () => {
-      const name = prompt('名前', item.name); if (name === null) return;
-      const description = prompt('説明', item.description || ''); if (description === null) return;
-      try { await api(`/api/admin/items/${item.id}`, { method: 'PUT', body: JSON.stringify({ name, description }) }); await refreshMeta(); }
-      catch (e) { toast(e.message, 'err'); }
-    };
-    const del = document.createElement('button');
-    del.className = 'danger'; del.textContent = '削除';
-    del.onclick = async () => {
-      if (!confirm(`「${item.name}」を削除しますか？この出し物への投票も消えます。`)) return;
-      try { await api(`/api/admin/items/${item.id}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
-      catch (e) { toast(e.message, 'err'); }
-    };
-    row.append(edit, del);
-    box.appendChild(row);
   }
 }
 
@@ -451,13 +541,16 @@ $('#addCrit').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'err'); }
 });
 
+const WEIGHT_LABELS = { 0.5: '参考程度', 1: '標準', 1.5: 'やや重視', 2: '重視', 3: '最重視' };
+
 function renderCriteria() {
   const box = $('#critList');
   box.innerHTML = '';
   for (const c of cache.criteria) {
     const row = document.createElement('div');
     row.className = 'list-row';
-    row.innerHTML = `<div class="grow"><strong>${escapeHtml(c.name)}</strong> <span class="muted">重み ${c.weight}</span></div>`;
+    const wLabel = WEIGHT_LABELS[c.weight] ? `${WEIGHT_LABELS[c.weight]}・重み ${c.weight}` : `重み ${c.weight}`;
+    row.innerHTML = `<div class="grow"><strong>${escapeHtml(c.name)}</strong> <span class="tag">${wLabel}</span></div>`;
     const del = document.createElement('button');
     del.className = 'danger'; del.textContent = '削除';
     del.onclick = async () => {
@@ -637,7 +730,7 @@ async function loadSurveyResults() {
         block.appendChild(note);
         const save = document.createElement('button');
         save.className = 'secondary'; save.textContent = '画像で保存';
-        save.onclick = () => downloadCanvas(canvas, `アンケートQ${idx + 1}.png`);
+        save.onclick = () => showImagePreview(drawSurveyChart(q), `アンケートQ${idx + 1}.png`);
         block.appendChild(save);
       } else {
         const answers = q.answers || [];

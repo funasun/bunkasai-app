@@ -127,20 +127,24 @@
           <div class="row" style="gap:8px;flex-wrap:nowrap;max-width:480px">
             <input id="catName" placeholder="例: 展示部門" style="flex:1;min-width:0" />
             <button type="button" id="addCat" style="white-space:nowrap">部門を追加</button>
+            <button type="button" class="ghost hidden" id="cancelEditCat" style="white-space:nowrap">やめる</button>
           </div>
           <div id="catList" style="margin-top:10px"></div>
         </div>
         <div class="card">
-          <h2>出し物を追加</h2>
+          <h2 id="itemFormTitle">出し物を追加</h2>
           <div class="grid2">
             <div><label>名前</label><input id="itemName" placeholder="例: 1年A組 お化け屋敷" /></div>
             <div><label>説明（任意）</label><input id="itemDesc" placeholder="例: 教室展示" /></div>
           </div>
           <label style="margin-top:12px">部門</label>
           <select id="itemCat" style="max-width:380px"></select>
-          <div class="row" style="margin-top:14px"><button id="addItem">追加</button></div>
+          <div class="row" style="margin-top:14px">
+            <button id="addItem">追加</button>
+            <button class="ghost hidden" type="button" id="cancelEditItem">編集をやめる</button>
+          </div>
         </div>
-        <div class="card"><h2>登録済みの出し物</h2><div id="itemsList"></div></div>
+        <div class="card"><h2 id="itemsListTitle">登録済みの出し物</h2><div id="itemsList"></div></div>
       </section>
 
       <!-- 採点項目 -->
@@ -322,6 +326,20 @@
           <div id="backupList"></div>
         </div>
       </section>
+    </div>
+  </div>
+
+  <!-- 画像保存のプレビュー -->
+  <div class="modal-overlay hidden" id="imgModal">
+    <div class="modal-card">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+        <h2 id="imgModalTitle" style="margin:0;font-size:1.1rem">保存する画像のプレビュー</h2>
+        <button class="ghost" type="button" id="imgModalClose">閉じる</button>
+      </div>
+      <div id="imgModalBody" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end">
+        <button id="imgModalSave">この画像をPNGで保存</button>
+      </div>
     </div>
   </div>
 

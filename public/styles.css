@@ -402,6 +402,23 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   letter-spacing: .08em; margin: 0 0 6px 6px;
 }
 
+/* ============ Image preview modal ============ */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 23, 42, .58);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.modal-card {
+  background: var(--card);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  width: 100%; max-width: 860px;
+  max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+}
+.modal-card canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; }
+
 /* ============ Survey option editor (Google Forms風) ============ */
 .option-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .option-row .opt-dot {
