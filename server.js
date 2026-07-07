@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   getConfig, saveConfig, reloadConfig,
   getSettings, saveSettings, setAdminPassword,
-  listVotes, putVote, deleteVotesForItem, clearVotes,
+  listVotes, putVote, deleteVotesForItem, deleteVotesForVoter, clearVotes,
   listVoteBackups, restoreVoteBackup,
   issueToken, isValidToken, verifyPassword, isLegacyHash, newId,
 } from './lib/store.js';
@@ -62,6 +62,8 @@ app.get('/api/config', ah(async (req, res) => {
     criteria: cfg.criteria,
     items: cfg.items.map((i) => ({ id: i.id, name: i.name, description: i.description || '' })),
     votingOpen: settings.votingOpen !== false,
+    visitorVoteMode: settings.visitorVoteMode === 'choice' ? 'choice' : 'score',
+    choiceMax: Math.max(1, Number(settings.choiceMax) || 3),
   });
 }));
 
@@ -98,6 +100,29 @@ app.post('/api/vote', ah(async (req, res) => {
   if (!voterId || typeof voterId !== 'string') {
     return res.status(400).json({ error: 'voterId が必要です' });
   }
+  // 来場者が選択方式のとき: choices（出し物IDの配列）で票を丸ごと入れ替える
+  if (voterType === 'visitor' && settings.visitorVoteMode === 'choice') {
+    const { choices } = req.body || {};
+    if (!Array.isArray(choices)) {
+      return res.status(400).json({ error: '投票方式が変更されました。ページを再読み込みしてください' });
+    }
+    const ids = [...new Set(choices.map(String))];
+    const max = Math.max(1, Number(settings.choiceMax) || 3);
+    if (ids.length === 0) return res.status(400).json({ error: '少なくとも1つ選んでください' });
+    if (ids.length > max) return res.status(400).json({ error: `選べるのは${max}つまでです` });
+    if (!ids.every((id) => cfg.items.some((i) => i.id === id))) {
+      return res.status(400).json({ error: '出し物が見つかりません' });
+    }
+    await deleteVotesForVoter('visitor', voterId);
+    for (const id of ids) {
+      await putVote({ voterType: 'visitor', voterId, itemId: id, scores: {}, kind: 'choice' });
+    }
+    return res.json({ ok: true, count: ids.length });
+  }
+  if (voterType === 'visitor' && req.body?.choices) {
+    return res.status(400).json({ error: '投票方式が変更されました。ページを再読み込みしてください' });
+  }
+
   // 審査員票は「正しい審査員コード」を伴うものだけ受け付ける（なりすまし防止）
   if (voterType === 'judge') {
     const name = voterId.replace(/^judge:/, '').trim();
@@ -152,9 +177,11 @@ app.get('/api/admin/settings', requireAuth, ah(async (req, res) => {
 
 app.put('/api/admin/settings', requireAuth, ah(async (req, res) => {
   const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
-  const { title, scale, method, bayesianPrior, trimRatio, judgeCode, votingOpen } = req.body || {};
+  const { title, scale, method, bayesianPrior, trimRatio, judgeCode, votingOpen, visitorVoteMode, choiceMax } = req.body || {};
   if (typeof title === 'string') cfg.title = title;
   if (typeof votingOpen === 'boolean') settings.votingOpen = votingOpen;
+  if (visitorVoteMode === 'score' || visitorVoteMode === 'choice') settings.visitorVoteMode = visitorVoteMode;
+  if (choiceMax !== undefined) settings.choiceMax = Math.max(1, Math.min(10, Math.round(Number(choiceMax) || 1)));
   if (typeof judgeCode === 'string' && normCode(judgeCode)) settings.judgeCode = normCode(judgeCode);
   if (scale && typeof scale === 'object') {
     const min = Number(scale.min), max = Number(scale.max), step = Number(scale.step);
@@ -256,8 +283,11 @@ app.delete('/api/admin/criteria/:id', requireAuth, ah(async (req, res) => {
 // 結果（順位）。全集計方法での順位も返し、比較できるようにする。
 app.get('/api/admin/results', requireAuth, ah(async (req, res) => {
   const [settings, cfg, votes] = await Promise.all([getSettings(), getConfig(), listVotes()]);
+  const visitorChoice = settings.visitorVoteMode === 'choice';
   const buildFor = (voterType) => {
-    const current = ranking(votes, cfg.items, cfg.criteria, settings, voterType);
+    // 選択方式の来場者票は1票=1点なので、来場者の順位は常に得票数（単純合計）で決める
+    const eff = visitorChoice && voterType === 'visitor' ? { ...settings, method: 'sum' } : settings;
+    const current = ranking(votes, cfg.items, cfg.criteria, eff, voterType);
     const byMethod = {};
     for (const m of METHODS) {
       byMethod[m.id] = ranking(votes, cfg.items, cfg.criteria, { ...settings, method: m.id }, voterType);
@@ -281,6 +311,7 @@ app.get('/api/admin/results', requireAuth, ah(async (req, res) => {
   res.json({
     method: settings.method,
     methods: METHODS,
+    visitorVoteMode: visitorChoice ? 'choice' : 'score',
     judge: buildFor('judge'),
     visitor: buildFor('visitor'),
     all: buildFor(null),

@@ -124,6 +124,7 @@ async function loadResults() {
     resultsData = await api('/api/admin/results');
     $('#methodSelect').value = resultsData.method;
     updateMethodDesc();
+    $('#choiceModeNote').classList.toggle('hidden', resultsData.visitorVoteMode !== 'choice');
     $('#statJudge').textContent = resultsData.counts.judgeVotes;
     $('#statVisitor').textContent = resultsData.counts.visitorVotes;
     $('#statItems').textContent = cache.items.length;
@@ -138,6 +139,8 @@ function rankBadge(rank) {
   return `<span class="rank-badge ${cls}">${rank}</span>`;
 }
 
+const isChoiceVisitor = () => resultsData?.visitorVoteMode === 'choice' && voterFilter === 'visitor';
+
 function renderRanking() {
   const rows = resultsData[voterFilter].current;
   if (!rows.length) {
@@ -148,8 +151,9 @@ function renderRanking() {
   const maxS = Math.max(...scores);
   const minS = Math.min(...scores, 0);
   const span = maxS - minS || 1;
+  const scoreLabel = isChoiceVisitor() ? '得票数' : 'スコア';
 
-  let html = '<table><thead><tr><th style="width:56px">順位</th><th>出し物</th><th class="score-cell">スコア</th><th class="num" style="width:64px">票数</th></tr></thead><tbody>';
+  let html = `<table><thead><tr><th style="width:56px">順位</th><th>出し物</th><th class="score-cell">${scoreLabel}</th><th class="num" style="width:64px">票数</th></tr></thead><tbody>`;
   for (const r of rows) {
     const width = Math.max(3, ((r.score - minS) / span) * 100);
     html += `<tr>
@@ -166,6 +170,10 @@ function renderRanking() {
 function renderCompare() {
   const group = resultsData[voterFilter];
   if (!cache.items.length) { $('#compareTable').innerHTML = ''; return; }
+  if (isChoiceVisitor()) {
+    $('#compareTable').innerHTML = '<div class="empty">来場者は選択方式のため、集計方法による順位の違いはありません（得票数で順位づけされます）。</div>';
+    return;
+  }
   const rankMaps = {};
   for (const m of cache.methods) {
     rankMaps[m.id] = new Map(group.byMethod[m.id].map((r) => [r.itemId, r.rank]));
@@ -315,9 +323,60 @@ $('#votingToggle').addEventListener('click', async (e) => {
   } catch (e2) { toast(e2.message, 'err'); }
 });
 
+function renderVisitorMode() {
+  const mode = cache.settings.visitorVoteMode === 'choice' ? 'choice' : 'score';
+  [...$('#visitorModeToggle').children].forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  $('#choiceMaxWrap').classList.toggle('hidden', mode !== 'choice');
+  $('#visitorModeNote').textContent = mode === 'choice'
+    ? '来場者はお気に入りの出し物を選ぶだけで投票できます。1票=1点の得票数で順位づけされ、採点項目・重みは使われません。'
+    : '来場者も採点委員と同じように、採点項目ごとに点数をつけて投票します。';
+}
+
+$('#visitorModeToggle').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const mode = btn.dataset.mode;
+  if ((cache.settings.visitorVoteMode === 'choice' ? 'choice' : 'score') === mode) return;
+  try {
+    await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ visitorVoteMode: mode }) });
+    cache.settings.visitorVoteMode = mode;
+    renderVisitorMode();
+    await loadResults();
+    toast(mode === 'choice' ? '来場者の投票を「選択方式」にしました' : '来場者の投票を「点数方式」にしました', 'ok');
+  } catch (e2) { toast(e2.message, 'err'); }
+});
+
+$('#choiceMaxSel').addEventListener('change', async () => {
+  const choiceMax = Number($('#choiceMaxSel').value);
+  try {
+    await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ choiceMax }) });
+    cache.settings.choiceMax = choiceMax;
+    toast(`1人が選べる数を${choiceMax}つにしました`, 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+// --- 共有用URL --------------------------------------------------------
+$('#voteUrl').value = location.origin + '/';
+$('#adminUrl').value = location.origin + '/admin.html';
+
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${label}をコピーしました`, 'ok');
+  } catch {
+    toast('コピーできませんでした。URLを長押し（選択）してコピーしてください', 'err');
+  }
+}
+$('#copyVoteUrl').addEventListener('click', () => copyText($('#voteUrl').value, '採点URL'));
+$('#copyAdminUrl').addEventListener('click', () => copyText($('#adminUrl').value, '管理URL'));
+
 function fillSettingsForm() {
   const s = cache.settings;
   renderVotingToggle();
+  renderVisitorMode();
+  setSelectValue($('#choiceMaxSel'), s.choiceMax ?? 3);
   $('#setTitle').value = s.title;
   $('#setJudgeCode').value = s.judgeCode || '';
   $('#newPassword').value = s.adminPassword || '';

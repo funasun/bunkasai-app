@@ -31,7 +31,7 @@
         <p>集計結果は審査に影響しないよう、<br>担当者のみが閲覧できます。</p>
       </div>
       <label for="password">パスワード</label>
-      <input id="password" type="password" placeholder="初期値: admin" autocomplete="current-password" />
+      <input id="password" type="password" placeholder="パスワードを入力" autocomplete="current-password" />
       <div class="row" style="margin-top:18px">
         <button id="loginBtn" style="width:100%">ログイン</button>
       </div>
@@ -59,6 +59,7 @@
           <label for="methodSelect">順位に使う集計方法</label>
           <select id="methodSelect"></select>
           <div class="method-desc" id="methodDesc"></div>
+          <p class="muted hidden" id="choiceModeNote" style="margin:8px 0 0">来場者の投票は「選択方式」です。来場者の順位は得票数（選ばれた回数）で決まり、集計方法・採点項目の重みは採点委員の票にのみ適用されます。</p>
           <div class="stat-row">
             <div class="stat"><div class="s-label">採点委員の票</div><div class="s-value" id="statJudge">0</div></div>
             <div class="stat"><div class="s-label">来場者の票</div><div class="s-value" id="statVisitor">0</div></div>
@@ -129,8 +130,41 @@
           <p class="muted" id="votingToggleNote" style="margin:10px 0 0"></p>
         </div>
         <div class="card">
+          <h2>来場者の投票方式</h2>
+          <p class="section-lead">来場者の採点画面の形式です。採点委員は常に「点数方式」で採点します。</p>
+          <div class="segmented" id="visitorModeToggle" style="max-width:380px">
+            <button data-mode="score" type="button">点数方式</button>
+            <button data-mode="choice" type="button">選択方式（お気に入り）</button>
+          </div>
+          <div id="choiceMaxWrap" class="hidden" style="margin-top:14px;max-width:380px">
+            <label>1人が選べる数</label>
+            <select id="choiceMaxSel">
+              <option value="1">1つだけ — いちばんのお気に入りに投票</option>
+              <option value="2">2つまで</option>
+              <option value="3">3つまで</option>
+              <option value="5">5つまで</option>
+            </select>
+          </div>
+          <p class="muted" id="visitorModeNote" style="margin:10px 0 0"></p>
+          <p class="muted" style="margin:6px 0 0">途中で方式を変えると集計が混ざります。変更した場合は「データ管理 → 全投票をリセット」をおすすめします。</p>
+        </div>
+        <div class="card">
+          <h2>共有用URL</h2>
+          <label>採点URL（投票する人に共有・QRコードにするのはこちら）</label>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <input id="voteUrl" readonly style="flex:1;min-width:0" />
+            <button type="button" id="copyVoteUrl" style="white-space:nowrap">コピー</button>
+          </div>
+          <label style="margin-top:18px">管理URL（このページ・担当者だけに共有）</label>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <input id="adminUrl" readonly style="flex:1;min-width:0" />
+            <button class="ghost" type="button" id="copyAdminUrl" style="white-space:nowrap">コピー</button>
+          </div>
+          <p class="muted" style="margin:8px 0 0;color:#b91c1c">注意: 管理URLは結果が見られるため、投票端末では開かない・掲示しないでください。共有するのは上の採点URLです。</p>
+        </div>
+        <div class="card">
           <h2>基本設定</h2>
-          <label>タイトル</label>
+          <label>アプリ名（投票画面・管理画面の見出しに表示）</label>
           <input id="setTitle" />
           <label>採点委員コード</label>
           <input id="setJudgeCode" autocomplete="off" />

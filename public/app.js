@@ -5,6 +5,8 @@ const state = {
   voterId: null,
   judgeCode: null,
   votedItems: new Set(),
+  choices: new Set(),   // 選択方式で選んだ出し物
+  choiceMode: false,    // 来場者×選択方式のときtrue
   currentItem: null,
 };
 
@@ -47,15 +49,17 @@ function show(cardId) {
       el.style.animation = '';
     }
   });
-  $('#actionBar').classList.toggle('hidden', cardId !== 'voteCard');
+  const barVisible = cardId === 'voteCard' || (cardId === 'listCard' && state.choiceMode);
+  $('#actionBar').classList.toggle('hidden', !barVisible);
   window.scrollTo({ top: 0 });
 }
 
 // --- 区分の選択 -----------------------------------------------------
 function startAs(voterType, voterId, badge) {
-  if (state.voterId !== voterId) state.votedItems.clear();
+  if (state.voterId !== voterId) { state.votedItems.clear(); state.choices.clear(); }
   state.voterType = voterType;
   state.voterId = voterId;
+  state.choiceMode = voterType === 'visitor' && state.config.visitorVoteMode === 'choice';
   $('#voterBadge').textContent = badge;
   renderItemList();
   show('listCard');
@@ -111,27 +115,69 @@ function renderItemList() {
   const list = $('#itemList');
   list.innerHTML = '';
   const items = state.config.items;
-  const done = items.filter((i) => state.votedItems.has(i.id)).length;
-  $('#progressLabel').textContent = `${done} / ${items.length}`;
-  $('#progressFill').style.width = items.length ? `${(done / items.length) * 100}%` : '0%';
+  const max = Math.max(1, state.config.choiceMax || 1);
+
+  if (state.choiceMode) {
+    $('#listTitle').textContent = 'お気に入りの出し物を選ぼう';
+    $('#listLead').textContent = max === 1
+      ? 'いちばん気に入った出し物を1つ選んで投票してください。あとから選び直すこともできます。'
+      : `気に入った出し物を最大${max}つまで選んで投票してください。あとから選び直すこともできます。`;
+    $('#progressLabel').textContent = `${state.choices.size} / ${max}`;
+    $('#progressFill').style.width = `${(state.choices.size / max) * 100}%`;
+  } else {
+    $('#listTitle').textContent = '出し物を選んで採点';
+    $('#listLead').textContent = '採点済みの出し物はあとから何度でも修正できます。';
+    const done = items.filter((i) => state.votedItems.has(i.id)).length;
+    $('#progressLabel').textContent = `${done} / ${items.length}`;
+    $('#progressFill').style.width = items.length ? `${(done / items.length) * 100}%` : '0%';
+  }
 
   if (!items.length) {
     list.innerHTML = '<div class="empty" style="grid-column:1/-1">まだ出し物が登録されていません。<br>管理画面から追加してください。</div>';
     return;
   }
   for (const item of items) {
-    const voted = state.votedItems.has(item.id);
+    const marked = state.choiceMode ? state.choices.has(item.id) : state.votedItems.has(item.id);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'item-card' + (voted ? ' voted' : '');
+    btn.className = 'item-card' + (marked ? ' voted' : '');
+    const status = state.choiceMode
+      ? (marked ? checkSvg + ' 選択中 · タップで解除' : 'タップで選択')
+      : (marked ? checkSvg + ' 採点済み · タップで修正' : '未採点');
     btn.innerHTML =
       `<span class="i-name">${escapeHtml(item.name)}</span>` +
       (item.description ? `<span class="i-desc">${escapeHtml(item.description)}</span>` : '') +
-      `<span class="i-status">${voted ? checkSvg + ' 採点済み · タップで修正' : '未採点'}</span>` +
-      `<span class="i-arrow">${arrowSvg}</span>`;
-    btn.addEventListener('click', () => openVote(item));
+      `<span class="i-status">${status}</span>` +
+      `<span class="i-arrow">${state.choiceMode ? '' : arrowSvg}</span>`;
+    btn.addEventListener('click', () => (state.choiceMode ? toggleChoice(item) : openVote(item)));
     list.appendChild(btn);
   }
+  if (state.choiceMode) updateChoiceStatus();
+}
+
+// --- 選択方式（お気に入りを選ぶ） -------------------------------------
+function toggleChoice(item) {
+  const max = Math.max(1, state.config.choiceMax || 1);
+  if (state.choices.has(item.id)) {
+    state.choices.delete(item.id);
+  } else if (state.choices.size >= max) {
+    if (max === 1) {
+      state.choices.clear();
+      state.choices.add(item.id);
+    } else {
+      return toast(`選べるのは${max}つまでです。選択を外してから選び直してください`, 'err');
+    }
+  } else {
+    state.choices.add(item.id);
+  }
+  renderItemList();
+}
+
+function updateChoiceStatus() {
+  const max = Math.max(1, state.config.choiceMax || 1);
+  const n = state.choices.size;
+  $('#voteStatus').textContent = `${n} / ${max} 件を選択中`;
+  $('#submitVote').disabled = n === 0;
 }
 
 // --- 採点フォーム ---------------------------------------------------
@@ -190,6 +236,26 @@ function updateVoteStatus() {
 $('#backBtn').addEventListener('click', () => show('listCard'));
 
 $('#submitVote').addEventListener('click', async () => {
+  if (state.choiceMode) {
+    if (state.choices.size === 0) return toast('少なくとも1つ選んでください', 'err');
+    try {
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voterType: state.voterType,
+          voterId: state.voterId,
+          choices: [...state.choices],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) return toast(data.error || '投票に失敗しました', 'err');
+      toast(`${data.count}件に投票しました。あとから選び直すこともできます`, 'ok');
+    } catch {
+      toast('通信エラー。もう一度お試しください', 'err');
+    }
+    return;
+  }
   const scores = selectedScores();
   if (Object.keys(scores).length === 0) {
     return toast('少なくとも1項目は選んでください', 'err');
