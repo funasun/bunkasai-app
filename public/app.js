@@ -49,14 +49,26 @@ function show(cardId) {
 }
 
 // --- 区分の選択 -----------------------------------------------------
-$('#voterTypeSeg').addEventListener('click', (e) => {
-  const btn = e.target.closest('.choice');
-  if (!btn) return;
-  state.voterType = btn.dataset.type;
-  document.querySelectorAll('#voterTypeSeg .choice').forEach((b) => b.classList.toggle('active', b === btn));
-  $('#judgeNameWrap').classList.toggle('hidden', state.voterType !== 'judge');
-  if (state.voterType === 'judge') $('#judgeName').focus();
-  validateStart();
+function startAs(voterType, voterId, badge) {
+  if (state.voterId !== voterId) state.votedItems.clear();
+  state.voterType = voterType;
+  state.voterId = voterId;
+  $('#voterBadge').textContent = badge;
+  renderItemList();
+  show('listCard');
+}
+
+// メイン導線: 来場者はワンタップで開始
+$('#visitorStartBtn').addEventListener('click', () => {
+  state.judgeCode = null;
+  startAs('visitor', getVisitorId(), '来場者');
+});
+
+// 審査員は折りたたみの中から開始（一般のかたが誤って選ばないように）
+$('#judgeToggle').addEventListener('click', () => {
+  const wrap = $('#judgeNameWrap');
+  wrap.classList.toggle('hidden');
+  if (!wrap.classList.contains('hidden')) $('#judgeName').focus();
 });
 
 $('#judgeName').addEventListener('input', validateStart);
@@ -66,35 +78,24 @@ $('#judgeCode').addEventListener('keydown', (e) => {
 });
 
 function validateStart() {
-  let ok = !!state.voterType;
-  if (state.voterType === 'judge' && (!$('#judgeName').value.trim() || !$('#judgeCode').value.trim())) ok = false;
-  $('#startBtn').disabled = !ok;
+  $('#startBtn').disabled = !($('#judgeName').value.trim() && $('#judgeCode').value.trim());
 }
 
 $('#startBtn').addEventListener('click', async () => {
-  if (state.voterType === 'judge') {
-    // なりすまし防止: 採点開始前に登録名とコードを検証
-    const code = $('#judgeCode').value.trim();
-    const res = await fetch('/api/judge-verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name: $('#judgeName').value.trim() }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return toast(data.error || '審査員コードが違います', 'err');
-    }
-    state.judgeCode = code;
-    state.voterId = 'judge:' + $('#judgeName').value.trim();
-  } else {
-    state.judgeCode = null;
-    state.voterId = getVisitorId();
+  // なりすまし防止: 採点開始前に名前とコードを検証
+  const code = $('#judgeCode').value.trim();
+  const name = $('#judgeName').value.trim();
+  const res = await fetch('/api/judge-verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return toast(data.error || '審査員コードが違います', 'err');
   }
-  $('#voterBadge').textContent = state.voterType === 'judge'
-    ? `審査員 · ${$('#judgeName').value.trim()}`
-    : '来場者';
-  renderItemList();
-  show('listCard');
+  state.judgeCode = code;
+  startAs('judge', 'judge:' + name, `審査員 · ${name}`);
 });
 
 $('#changeVoterBtn').addEventListener('click', () => show('setupCard'));
