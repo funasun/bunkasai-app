@@ -7,7 +7,7 @@ import {
   listVotes, putVote, deleteVotesForItem, clearVotes,
   issueToken, isValidToken, verifyPassword, newId,
 } from './lib/store.js';
-import { METHODS, ranking } from './lib/aggregate.js';
+import { METHODS, ranking, voteTotal } from './lib/aggregate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -55,16 +55,15 @@ app.get('/api/config', ah(async (req, res) => {
     scale: cfg.scale,
     criteria: cfg.criteria,
     items: cfg.items.map((i) => ({ id: i.id, name: i.name, description: i.description || '' })),
-    judges: cfg.judges,
   });
 }));
 
 // 審査員コードの事前確認（採点開始時のチェック用）
 app.post('/api/judge-verify', ah(async (req, res) => {
-  const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
+  const settings = await getSettings();
   const { code, name } = req.body || {};
-  if (!cfg.judges.includes(String(name || '').trim())) {
-    return res.status(403).json({ error: '登録されていない審査員です' });
+  if (!String(name || '').trim()) {
+    return res.status(400).json({ error: 'お名前を入力してください' });
   }
   if (!code || String(code).trim() !== settings.judgeCode) {
     return res.status(401).json({ error: '審査員コードが違います' });
@@ -81,12 +80,10 @@ app.post('/api/vote', ah(async (req, res) => {
   if (!voterId || typeof voterId !== 'string') {
     return res.status(400).json({ error: 'voterId が必要です' });
   }
-  // 審査員票は「登録済みの審査員」かつ「正しいコード」のみ受け付ける
+  // 審査員票は「正しい審査員コード」を伴うものだけ受け付ける（なりすまし防止）
   if (voterType === 'judge') {
     const name = voterId.replace(/^judge:/, '').trim();
-    if (!cfg.judges.includes(name)) {
-      return res.status(403).json({ error: '登録されていない審査員です' });
-    }
+    if (!name) return res.status(400).json({ error: 'お名前が必要です' });
     if (String(judgeCode || '').trim() !== settings.judgeCode) {
       return res.status(403).json({ error: '審査員コードが違います' });
     }
@@ -122,7 +119,6 @@ async function adminSettingsPayload() {
     settings: { ...runtime, title: cfg.title, scale: cfg.scale },
     criteria: cfg.criteria,
     items: cfg.items,
-    judges: cfg.judges,
     methods: METHODS,
   };
 }
@@ -233,27 +229,6 @@ app.delete('/api/admin/criteria/:id', requireAuth, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// 審査員の登録・削除
-app.post('/api/admin/judges', requireAuth, ah(async (req, res) => {
-  const cfg = await getConfig();
-  const name = String(req.body?.name || '').trim();
-  if (!name) return res.status(400).json({ error: '名前が必要です' });
-  if (cfg.judges.includes(name)) return res.status(400).json({ error: 'すでに登録されています' });
-  cfg.judges.push(name);
-  await saveConfig(cfg);
-  res.json({ ok: true, judges: cfg.judges });
-}));
-
-app.delete('/api/admin/judges/:name', requireAuth, ah(async (req, res) => {
-  const cfg = await getConfig();
-  const name = decodeURIComponent(req.params.name);
-  const idx = cfg.judges.indexOf(name);
-  if (idx === -1) return res.status(404).json({ error: '見つかりません' });
-  cfg.judges.splice(idx, 1);
-  await saveConfig(cfg);
-  res.json({ ok: true, judges: cfg.judges });
-}));
-
 // 結果（順位）。全集計方法での順位も返し、比較できるようにする。
 app.get('/api/admin/results', requireAuth, ah(async (req, res) => {
   const [settings, cfg, votes] = await Promise.all([getSettings(), getConfig(), listVotes()]);
@@ -265,12 +240,28 @@ app.get('/api/admin/results', requireAuth, ah(async (req, res) => {
     }
     return { current, byMethod };
   };
+  // 審査員×出し物の採点表（総合点と項目別の生点）
+  const judgeVotes = votes.filter((v) => v.voterType === 'judge');
+  const judgeNames = [...new Set(judgeVotes.map((v) => v.voterId.replace(/^judge:/, '')))]
+    .sort((a, b) => a.localeCompare(b, 'ja'));
+  const judgeTable = {};
+  for (const v of judgeVotes) {
+    const name = v.voterId.replace(/^judge:/, '');
+    if (!judgeTable[name]) judgeTable[name] = {};
+    judgeTable[name][v.itemId] = {
+      total: Math.round(voteTotal(v, cfg.criteria) * 100) / 100,
+      scores: v.scores,
+    };
+  }
+
   res.json({
     method: settings.method,
     methods: METHODS,
     judge: buildFor('judge'),
     visitor: buildFor('visitor'),
     all: buildFor(null),
+    judgeNames,
+    judgeTable,
     counts: {
       judgeVotes: votes.filter((v) => v.voterType === 'judge').length,
       visitorVotes: votes.filter((v) => v.voterType === 'visitor').length,

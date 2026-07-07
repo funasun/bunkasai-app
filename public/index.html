@@ -48,12 +48,10 @@
       </div>
       <div id="judgeNameWrap" class="hidden">
         <label for="judgeName">お名前（審査員）</label>
-        <select id="judgeName">
-          <option value="">選択してください</option>
-        </select>
+        <input id="judgeName" autocomplete="off" placeholder="例: 山田太郎" />
         <label for="judgeCode">審査員コード</label>
         <input id="judgeCode" inputmode="numeric" autocomplete="off" placeholder="担当者から伝えられた6桁のコード" />
-        <p class="muted" style="margin:8px 0 0">審査員は事前に登録されたかたのみ採点できます。コードは運営の担当者にご確認ください。</p>
+        <p class="muted" style="margin:8px 0 0">コードは運営の担当者にご確認ください。集計では同じお名前の採点は同一審査員として扱われます。</p>
       </div>
       <div class="row" style="margin-top:22px; justify-content:center">
         <button id="startBtn" disabled style="min-width:220px">採点を開始</button>

@@ -43,7 +43,6 @@
         <button data-tab="results" class="active">結果・順位</button>
         <button data-tab="items">出し物</button>
         <button data-tab="criteria">採点項目</button>
-        <button data-tab="judges">審査員</button>
         <button data-tab="settings">設定</button>
       </div>
 
@@ -75,6 +74,11 @@
           <p class="section-lead">同じ票を各方法で集計したときの順位。偏りの影響を確認できます。</p>
           <div class="table-scroll" id="compareTable"></div>
         </div>
+        <div class="card">
+          <h2>審査員の採点表</h2>
+          <p class="section-lead" id="judgeMatrixLead">審査員ごと・出し物ごとの点数の一覧です。太字が総合点（重み付き合計）、カッコ内は項目別の点数。</p>
+          <div class="table-scroll" id="judgeMatrix"></div>
+        </div>
       </section>
 
       <!-- 出し物 -->
@@ -102,19 +106,6 @@
           <div class="row" style="margin-top:14px"><button id="addCrit">追加</button></div>
         </div>
         <div class="card"><h2>登録済みの採点項目</h2><div id="critList"></div></div>
-      </section>
-
-      <!-- 審査員 -->
-      <section class="tab hidden" id="tab-judges">
-        <div class="card">
-          <h2>審査員を登録</h2>
-          <p class="section-lead">審査員として採点できるのは、ここに登録された名前のかただけです。投票画面ではリストから選択します。</p>
-          <div class="grid2">
-            <div><label>名前</label><input id="judgeNewName" placeholder="例: 山田先生" /></div>
-          </div>
-          <div class="row" style="margin-top:14px"><button id="addJudge">登録</button></div>
-        </div>
-        <div class="card"><h2>登録済みの審査員</h2><div id="judgesList"></div></div>
       </section>
 
       <!-- 設定 -->

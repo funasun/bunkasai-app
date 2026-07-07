@@ -1,7 +1,7 @@
 // 管理・結果画面。全APIはトークン認証必須。
 const $ = (sel) => document.querySelector(sel);
 let token = sessionStorage.getItem('adminToken') || null;
-let cache = { settings: null, criteria: [], items: [], judges: [], methods: [] };
+let cache = { settings: null, criteria: [], items: [], methods: [] };
 let voterFilter = 'judge';
 
 function toast(msg, kind = '') {
@@ -84,7 +84,6 @@ async function boot() {
   fillMethodSelect();
   renderItems();
   renderCriteria();
-  renderJudges();
   await loadResults();
 }
 
@@ -129,6 +128,7 @@ async function loadResults() {
     $('#statItems').textContent = cache.items.length;
     renderRanking();
     renderCompare();
+    renderJudgeMatrix();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -260,37 +260,34 @@ function renderCriteria() {
   }
 }
 
-// --- 審査員 ---------------------------------------------------------
-$('#addJudge').addEventListener('click', async () => {
-  const name = $('#judgeNewName').value.trim();
-  if (!name) return toast('名前を入力してください', 'err');
-  try {
-    await api('/api/admin/judges', { method: 'POST', body: JSON.stringify({ name }) });
-    $('#judgeNewName').value = '';
-    await refreshMeta();
-    toast('登録しました', 'ok');
-  } catch (e) { toast(e.message, 'err'); }
-});
-$('#judgeNewName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#addJudge').click(); });
-
-function renderJudges() {
-  const box = $('#judgesList');
-  if (!cache.judges.length) { box.innerHTML = '<div class="empty">まだ登録されていません。審査員を登録すると投票画面で選べるようになります。</div>'; return; }
-  box.innerHTML = '';
-  for (const name of cache.judges) {
-    const row = document.createElement('div');
-    row.className = 'list-row';
-    row.innerHTML = `<div class="grow"><strong>${escapeHtml(name)}</strong></div>`;
-    const del = document.createElement('button');
-    del.className = 'danger'; del.textContent = '削除';
-    del.onclick = async () => {
-      if (!confirm(`審査員「${name}」を削除しますか？（過去の票は残ります）`)) return;
-      try { await api(`/api/admin/judges/${encodeURIComponent(name)}`, { method: 'DELETE' }); await refreshMeta(); toast('削除しました', 'ok'); }
-      catch (e) { toast(e.message, 'err'); }
-    };
-    row.append(del);
-    box.appendChild(row);
+// --- 審査員×出し物の採点表 -------------------------------------------
+function renderJudgeMatrix() {
+  const box = $('#judgeMatrix');
+  const names = resultsData.judgeNames || [];
+  if (!names.length || !cache.items.length) {
+    box.innerHTML = '<div class="empty">まだ審査員の採点がありません。</div>';
+    return;
   }
+  $('#judgeMatrixLead').textContent =
+    `太字が総合点（重み付き合計）、カッコ内は項目別の点数（${cache.criteria.map((c) => c.name).join(' / ')}）。`;
+  let html = '<table><thead><tr><th>出し物</th>';
+  for (const n of names) html += `<th class="num">${escapeHtml(n)}</th>`;
+  html += '</tr></thead><tbody>';
+  for (const item of cache.items) {
+    html += `<tr><td><strong>${escapeHtml(item.name)}</strong></td>`;
+    for (const n of names) {
+      const cell = resultsData.judgeTable?.[n]?.[item.id];
+      if (!cell) {
+        html += '<td class="num" style="color:var(--muted)">-</td>';
+      } else {
+        const detail = cache.criteria.map((c) => cell.scores?.[c.id] ?? '-').join(' / ');
+        html += `<td class="num"><strong>${cell.total}</strong><br><span class="muted" style="font-size:.78rem">(${detail})</span></td>`;
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  box.innerHTML = html;
 }
 
 // --- 設定 -----------------------------------------------------------
@@ -338,7 +335,6 @@ $('#reloadConfigBtn').addEventListener('click', async () => {
     fillMethodSelect();
     renderItems();
     renderCriteria();
-    renderJudges();
     await loadResults();
     toast('config.json を再読み込みしました', 'ok');
   } catch (e) { toast(e.message, 'err'); }
@@ -368,7 +364,6 @@ async function refreshMeta() {
   cache = data;
   renderItems();
   renderCriteria();
-  renderJudges();
   fillMethodSelect();
   if (!$('#tab-results').classList.contains('hidden')) await loadResults();
 }

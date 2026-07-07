@@ -32,9 +32,6 @@ async function loadConfig() {
   state.config = await res.json();
   $('#title').textContent = state.config.title;
   document.title = state.config.title;
-  const sel = $('#judgeName');
-  sel.innerHTML = '<option value="">選択してください</option>' +
-    (state.config.judges || []).map((j) => `<option value="${escapeHtml(j)}">${escapeHtml(j)}</option>`).join('');
 }
 
 function show(cardId) {
@@ -62,7 +59,7 @@ $('#voterTypeSeg').addEventListener('click', (e) => {
   validateStart();
 });
 
-$('#judgeName').addEventListener('change', validateStart);
+$('#judgeName').addEventListener('input', validateStart);
 $('#judgeCode').addEventListener('input', validateStart);
 $('#judgeCode').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !$('#startBtn').disabled) $('#startBtn').click();
