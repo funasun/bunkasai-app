@@ -295,6 +295,7 @@ function fillSettingsForm() {
   const s = cache.settings;
   $('#setTitle').value = s.title;
   $('#setJudgeCode').value = s.judgeCode || '';
+  $('#newPassword').value = s.adminPassword || '';
   $('#scaleMin').value = s.scale.min;
   $('#scaleMax').value = s.scale.max;
   $('#scaleStep').value = s.scale.step;
@@ -322,7 +323,7 @@ $('#changePw').addEventListener('click', async () => {
   const password = $('#newPassword').value;
   try {
     await api('/api/admin/password', { method: 'POST', body: JSON.stringify({ password }) });
-    $('#newPassword').value = '';
+    cache.settings.adminPassword = password;
     toast('パスワードを変更しました', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 });

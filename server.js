@@ -5,7 +5,7 @@ import {
   getConfig, saveConfig, reloadConfig,
   getSettings, saveSettings, setAdminPassword,
   listVotes, putVote, deleteVotesForItem, clearVotes,
-  issueToken, isValidToken, verifyPassword, newId,
+  issueToken, isValidToken, verifyPassword, isLegacyHash, newId,
 } from './lib/store.js';
 import { METHODS, ranking, voteTotal } from './lib/aggregate.js';
 
@@ -42,6 +42,11 @@ app.post('/api/login', ah(async (req, res) => {
   const { password } = req.body || {};
   if (!password || !verifyPassword(password, settings.adminPassword)) {
     return res.status(401).json({ error: 'パスワードが違います' });
+  }
+  // 旧ハッシュ保存からの移行: 正しいパスワードが分かるこの時点で平文に置き換える
+  if (isLegacyHash(settings.adminPassword)) {
+    settings.adminPassword = String(password);
+    await saveSettings(settings);
   }
   res.json({ token: await issueToken() });
 }));
@@ -121,7 +126,12 @@ async function adminSettingsPayload() {
   const [settings, cfg] = await Promise.all([getSettings(), getConfig()]);
   const { adminPassword, ...runtime } = settings;
   return {
-    settings: { ...runtime, title: cfg.title, scale: cfg.scale },
+    settings: {
+      ...runtime,
+      title: cfg.title,
+      scale: cfg.scale,
+      adminPassword: isLegacyHash(adminPassword) ? '' : adminPassword,
+    },
     criteria: cfg.criteria,
     items: cfg.items,
     methods: METHODS,
