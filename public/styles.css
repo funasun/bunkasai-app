@@ -397,9 +397,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ============ Admin tab nav (grouped) ============ */
 .tab-nav { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; align-items: flex-end; }
+.tab-group { max-width: 100%; min-width: 0; }
 .tab-group-label {
   font-size: .72rem; font-weight: 800; color: var(--muted);
   letter-spacing: .08em; margin: 0 0 6px 6px;
+}
+
+/* スマホ: タブは縦積み＋2列グリッドで全ボタンを画面内に収める */
+@media (max-width: 640px) {
+  .tab-nav { flex-direction: column; gap: 12px; align-items: stretch; }
+  .tab-nav .segmented { display: grid; grid-template-columns: 1fr 1fr; width: 100%; overflow: visible; }
+  .tab-nav .segmented button { padding: 10px 6px; font-size: .87rem; text-align: center; }
+  /* 一覧行: 名前を1行目いっぱいに、操作（プルダウン・ボタン）は2行目へ */
+  .list-row { flex-wrap: wrap; row-gap: 8px; }
+  .list-row .grow { flex-basis: 100%; }
 }
 
 /* ============ Image preview modal ============ */
