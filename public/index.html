@@ -24,8 +24,16 @@
   </header>
 
   <div class="container">
+    <!-- 読み込み中のスケルトン -->
+    <section class="card" id="skeletonCard" aria-hidden="true">
+      <div class="sk-line" style="width:46%;height:24px;margin:8px auto 0"></div>
+      <div class="sk-line" style="width:68%;height:14px;margin:14px auto 0"></div>
+      <div class="sk-line" style="height:54px;margin:24px auto 0;max-width:420px;border-radius:12px"></div>
+      <div class="sk-line" style="width:52%;height:13px;margin:14px auto 22px"></div>
+    </section>
+
     <!-- 投票者の設定 -->
-    <section class="card" id="setupCard">
+    <section class="card hidden" id="setupCard">
       <div class="hero">
         <h2>採点をはじめる</h2>
         <p>気に入った出し物に点数をつけて応援しよう</p>
@@ -62,6 +70,11 @@
         <div class="progress-bar"><div id="progressFill" style="width:0%"></div></div>
         <span class="progress-label" id="progressLabel">0 / 0</span>
       </div>
+      <div class="search-wrap hidden" id="searchWrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="itemSearch" type="search" placeholder="出し物を検索" autocomplete="off" />
+      </div>
+      <div class="chip-row hidden" id="catChips"></div>
       <div class="item-grid" id="itemList"></div>
       <div id="surveyBanner" class="hidden" style="margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--primary-soft)">
         <strong>文化祭アンケートにご協力ください</strong>
@@ -87,23 +100,48 @@
       </div>
     </section>
 
-    <!-- 採点フォーム -->
-    <section class="card hidden" id="voteCard">
-      <button class="back-link" id="backBtn" type="button">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        一覧に戻る
-      </button>
-      <h2 id="voteItemName" style="font-size:1.35rem"></h2>
-      <p class="muted" id="voteItemDesc" style="margin-top:0"></p>
-      <div id="criteriaForm"></div>
-    </section>
   </div>
 
-  <!-- 投票用の固定アクションバー -->
+  <!-- 採点フォーム（下から出てくるシート） -->
+  <div class="sheet-overlay hidden" id="voteSheet">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="voteItemName">
+      <div class="sheet-head">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="sheet-title-row">
+          <div style="min-width:0">
+            <h2 id="voteItemName" style="margin:0;font-size:1.25rem"></h2>
+            <p class="muted" id="voteItemDesc" style="margin:2px 0 0"></p>
+          </div>
+          <button class="sheet-close" id="sheetClose" type="button" aria-label="閉じる">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sheet-body" id="sheetBody">
+        <div id="criteriaForm"></div>
+      </div>
+      <div class="sheet-foot">
+        <span class="status" id="sheetStatus"></span>
+        <button id="submitScore">この内容で投票</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 選択方式用の固定アクションバー -->
   <div class="action-bar hidden" id="actionBar">
     <div class="inner">
       <span class="status" id="voteStatus"></span>
       <button id="submitVote">この内容で投票</button>
+    </div>
+  </div>
+
+  <!-- 投票完了のお祝い画面 -->
+  <div class="celebrate-overlay hidden" id="celebrate">
+    <div class="celebrate-card">
+      <div class="cel-mark" id="celMark"></div>
+      <h2 id="celebrateTitle" style="margin:14px 0 0"></h2>
+      <p class="muted" id="celebrateMsg" style="margin:8px 0 0"></p>
+      <button id="celebrateClose" type="button" style="margin-top:20px;min-width:180px">とじる</button>
     </div>
   </div>
 

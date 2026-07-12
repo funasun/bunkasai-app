@@ -9,6 +9,8 @@ const state = {
   choiceMode: false,    // 来場者×選択方式のときtrue
   surveyAnswers: null,  // 最後に送信したアンケート回答（書き直し用）
   currentItem: null,
+  catFilter: '',        // 部門チップの絞り込み（'' = すべて）
+  search: '',           // 出し物の検索キーワード
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -31,17 +33,28 @@ function getVisitorId() {
 }
 
 async function loadConfig() {
-  const res = await fetch('/api/config');
-  state.config = await res.json();
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error();
+    state.config = await res.json();
+  } catch {
+    // 読み込み失敗: スケルトンをエラー表示に差し替えて再試行できるようにする
+    const sk = $('#skeletonCard');
+    sk.innerHTML = '<div class="empty">読み込みに失敗しました。電波の良い場所でもう一度お試しください。<br><button class="secondary" id="retryLoad" style="margin-top:14px">再読み込み</button></div>';
+    $('#retryLoad').addEventListener('click', () => location.reload());
+    return;
+  }
   $('#title').textContent = state.config.title;
   document.title = state.config.title;
   const open = state.config.votingOpen !== false;
   $('#closedNotice').classList.toggle('hidden', open);
   $('#startArea').classList.toggle('hidden', !open);
+  $('#skeletonCard').remove();
+  $('#setupCard').classList.remove('hidden');
 }
 
 function show(cardId) {
-  ['setupCard', 'listCard', 'voteCard', 'surveyCard'].forEach((id) => {
+  ['setupCard', 'listCard', 'surveyCard'].forEach((id) => {
     const el = document.getElementById(id);
     el.classList.toggle('hidden', id !== cardId);
     if (id === cardId) {
@@ -50,7 +63,7 @@ function show(cardId) {
       el.style.animation = '';
     }
   });
-  const barVisible = cardId === 'voteCard' || (cardId === 'listCard' && state.choiceMode);
+  const barVisible = cardId === 'listCard' && state.choiceMode;
   $('#actionBar').classList.toggle('hidden', !barVisible);
   window.scrollTo({ top: 0 });
 }
@@ -134,9 +147,20 @@ function renderItemList() {
   }
 
   if (!items.length) {
+    $('#searchWrap').classList.add('hidden');
+    $('#catChips').classList.add('hidden');
     list.innerHTML = '<div class="empty" style="grid-column:1/-1">まだ出し物が登録されていません。<br>管理画面から追加してください。</div>';
     return;
   }
+
+  // 検索欄は出し物が多いときだけ表示（少ないと邪魔になるため）
+  $('#searchWrap').classList.toggle('hidden', items.length < 6);
+  renderCatChips();
+
+  const q = state.search.trim().toLowerCase();
+  const matches = (i) => !q ||
+    i.name.toLowerCase().includes(q) ||
+    (i.description || '').toLowerCase().includes(q);
 
   const appendItem = (item) => {
     const marked = state.choiceMode ? state.choices.has(item.id) : state.votedItems.has(item.id);
@@ -155,21 +179,35 @@ function renderItemList() {
     list.appendChild(btn);
   };
 
-  // 部門があれば部門ごとに見出しを付けて表示する
   const cats = state.config.categories || [];
-  if (cats.length) {
+  let shown = 0;
+
+  if (state.catFilter) {
+    // 部門チップで絞り込み中: 見出しなしのフラット表示
+    const group = items.filter((i) => (i.categoryId || '') === state.catFilter && matches(i));
+    group.forEach(appendItem);
+    shown = group.length;
+  } else if (cats.length) {
+    // 「すべて」: 部門ごとに見出しを付けて表示する
     const groups = [...cats, { id: '', name: 'その他' }];
     for (const cat of groups) {
-      const group = items.filter((i) => (i.categoryId || '') === cat.id);
+      const group = items.filter((i) => (i.categoryId || '') === cat.id && matches(i));
       if (!group.length) continue;
       const heading = document.createElement('div');
       heading.className = 'cat-heading';
       heading.textContent = cat.name;
       list.appendChild(heading);
       group.forEach(appendItem);
+      shown += group.length;
     }
   } else {
-    items.forEach(appendItem);
+    const filtered = items.filter(matches);
+    filtered.forEach(appendItem);
+    shown = filtered.length;
+  }
+
+  if (!shown) {
+    list.innerHTML = `<div class="empty" style="grid-column:1/-1">${q ? `「${escapeHtml(state.search.trim())}」に当てはまる出し物はありません。` : 'この部門にはまだ出し物がありません。'}</div>`;
   }
 
   // 来場者にはアンケートの案内を表示（設問があるときだけ）
@@ -178,6 +216,34 @@ function renderItemList() {
 
   if (state.choiceMode) updateChoiceStatus();
 }
+
+// --- 部門チップ（横スクロールで絞り込み） -------------------------------
+function renderCatChips() {
+  const wrap = $('#catChips');
+  const cats = state.config.categories || [];
+  if (!cats.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '';
+  const mk = (id, name) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (state.catFilter === id ? ' active' : '');
+    b.textContent = name;
+    b.addEventListener('click', () => {
+      state.catFilter = state.catFilter === id ? '' : id;
+      renderItemList();
+    });
+    wrap.appendChild(b);
+  };
+  mk('', 'すべて');
+  cats.forEach((c) => mk(c.id, c.name));
+}
+
+// 検索: 入力のたびに一覧だけ再描画（入力欄は一覧の外にあるのでフォーカスは保たれる）
+$('#itemSearch').addEventListener('input', () => {
+  state.search = $('#itemSearch').value;
+  renderItemList();
+});
 
 // --- アンケート -------------------------------------------------------
 $('#openSurveyBtn').addEventListener('click', () => { renderSurveyForm(); show('surveyCard'); });
@@ -251,8 +317,8 @@ $('#submitSurvey').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) return toast(data.error || '送信に失敗しました', 'err');
     state.surveyAnswers = answers;
-    toast('アンケートを送信しました。ご協力ありがとうございます！', 'ok');
     show('listCard');
+    showCelebration('回答ありがとうございました！', 'アンケートを送信しました。あとから書き直すこともできます。');
   } catch {
     toast('通信エラー。もう一度お試しください', 'err');
   }
@@ -282,6 +348,45 @@ function updateChoiceStatus() {
   $('#voteStatus').textContent = `${n} / ${max} 件を選択中`;
   $('#submitVote').disabled = n === 0;
 }
+
+// --- 採点シート（下から出てくるパネル） --------------------------------
+function openSheet() {
+  const ov = $('#voteSheet');
+  ov.classList.remove('hidden');
+  $('#sheetBody').scrollTop = 0;
+  void ov.offsetWidth; // スタイルを一度確定させてからopenを付けるとスライドインが再生される
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSheet() {
+  const ov = $('#voteSheet');
+  ov.classList.remove('open');
+  document.body.style.overflow = '';
+  setTimeout(() => ov.classList.add('hidden'), 260);
+}
+
+$('#sheetClose').addEventListener('click', closeSheet);
+$('#voteSheet').addEventListener('click', (e) => { if (e.target === $('#voteSheet')) closeSheet(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#voteSheet').classList.contains('hidden')) closeSheet();
+});
+
+// --- 投票完了のお祝い画面 ----------------------------------------------
+function showCelebration(title, msg) {
+  $('#celebrateTitle').textContent = title;
+  $('#celebrateMsg').textContent = msg;
+  // SVGを描画し直すことでアニメーションを毎回最初から再生する
+  $('#celMark').innerHTML =
+    '<svg viewBox="0 0 72 72" fill="none">' +
+    '<circle class="cel-circle" cx="36" cy="36" r="32" stroke="#10b981" stroke-width="4"/>' +
+    '<path class="cel-check" d="M22 37l10 10 18-20" stroke="#10b981" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+  $('#celebrate').classList.remove('hidden');
+}
+function closeCelebration() { $('#celebrate').classList.add('hidden'); }
+$('#celebrateClose').addEventListener('click', closeCelebration);
+$('#celebrate').addEventListener('click', (e) => { if (e.target === $('#celebrate')) closeCelebration(); });
 
 // --- 採点フォーム ---------------------------------------------------
 function openVote(item) {
@@ -317,7 +422,7 @@ function openVote(item) {
     form.appendChild(block);
   }
   updateVoteStatus();
-  show('voteCard');
+  openSheet();
 }
 
 function selectedScores() {
@@ -332,33 +437,34 @@ function selectedScores() {
 function updateVoteStatus() {
   const total = state.config.criteria.length;
   const done = Object.keys(selectedScores()).length;
-  $('#voteStatus').textContent = `${done} / ${total} 項目を選択中`;
-  $('#submitVote').disabled = done === 0;
+  $('#sheetStatus').textContent = `${done} / ${total} 項目を選択中`;
+  $('#submitScore').disabled = done === 0;
 }
 
-$('#backBtn').addEventListener('click', () => show('listCard'));
-
+// 選択方式の投票（画面下のアクションバー）
 $('#submitVote').addEventListener('click', async () => {
-  if (state.choiceMode) {
-    if (state.choices.size === 0) return toast('少なくとも1つ選んでください', 'err');
-    try {
-      const res = await fetch('/api/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          voterType: state.voterType,
-          voterId: state.voterId,
-          choices: [...state.choices],
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) return toast(data.error || '投票に失敗しました', 'err');
-      toast(`${data.count}件に投票しました。あとから選び直すこともできます`, 'ok');
-    } catch {
-      toast('通信エラー。もう一度お試しください', 'err');
-    }
-    return;
+  if (!state.choiceMode) return;
+  if (state.choices.size === 0) return toast('少なくとも1つ選んでください', 'err');
+  try {
+    const res = await fetch('/api/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        voterType: state.voterType,
+        voterId: state.voterId,
+        choices: [...state.choices],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return toast(data.error || '投票に失敗しました', 'err');
+    showCelebration('投票ありがとうございました！', `${data.count}件の出し物に投票しました。あとから選び直すこともできます。`);
+  } catch {
+    toast('通信エラー。もう一度お試しください', 'err');
   }
+});
+
+// 点数方式の投票（採点シート内のボタン）
+$('#submitScore').addEventListener('click', async () => {
   const scores = selectedScores();
   if (Object.keys(scores).length === 0) {
     return toast('少なくとも1項目は選んでください', 'err');
@@ -378,9 +484,16 @@ $('#submitVote').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) return toast(data.error || '投票に失敗しました', 'err');
     state.votedItems.add(state.currentItem.id);
-    toast(`「${state.currentItem.name}」に投票しました`, 'ok');
+    closeSheet();
     renderItemList();
-    show('listCard');
+    const total = state.config.items.length;
+    const done = state.config.items.filter((i) => state.votedItems.has(i.id)).length;
+    if (total > 0 && done === total) {
+      // 全部採点し終わったときだけお祝い画面（毎回出すとうるさいため）
+      showCelebration('すべての採点が完了しました！', `${total}件すべての出し物を採点しました。おつかれさまでした。あとから修正もできます。`);
+    } else {
+      toast(`「${state.currentItem.name}」に投票しました`, 'ok');
+    }
   } catch {
     toast('通信エラー。もう一度お試しください', 'err');
   }

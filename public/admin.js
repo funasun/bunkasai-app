@@ -5,11 +5,22 @@ let cache = { settings: null, criteria: [], items: [], methods: [] };
 let voterFilter = 'judge';
 let categoryFilter = ''; // '' = 総合（すべての出し物）
 
-function toast(msg, kind = '') {
+let toastTimer = null;
+// opts.action を渡すと「元に戻す」ボタン付きのトーストになる
+function toast(msg, kind = '', opts = {}) {
   const t = $('#toast');
+  clearTimeout(toastTimer);
   t.textContent = msg;
-  t.className = `toast show ${kind}`;
-  setTimeout(() => { t.className = 'toast'; }, 2200);
+  if (opts.action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-action';
+    b.textContent = opts.actionLabel || '元に戻す';
+    b.onclick = () => { t.className = 'toast'; opts.action(); };
+    t.appendChild(b);
+  }
+  t.className = `toast show ${kind}${opts.action ? ' has-action' : ''}`;
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, opts.duration || 2200);
 }
 
 async function api(path, opts = {}) {
@@ -66,15 +77,30 @@ $('#logoutBtn').addEventListener('click', () => {
   showLogin();
 });
 
-// --- タブ切替 -------------------------------------------------------
-$('#tabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-tab]');
-  if (!btn) return;
-  $('#tabs').querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('active', b === btn));
+// --- タブ切替（上部タブとボトムナビの両方を同期させる） -----------------
+function selectTab(tab) {
+  document.querySelectorAll('#tabs button[data-tab], #bottomNav button[data-tab]')
+    .forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab').forEach((t) => t.classList.add('hidden'));
-  $(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
-  if (btn.dataset.tab === 'results') loadResults();
-  if (btn.dataset.tab === 'survey-results') loadSurveyResults();
+  $(`#tab-${tab}`).classList.remove('hidden');
+  if (tab === 'results') loadResults();
+  if (tab === 'survey-results') loadSurveyResults();
+}
+
+for (const nav of ['#tabs', '#bottomNav']) {
+  $(nav).addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tab]');
+    if (btn) selectTab(btn.dataset.tab);
+  });
+}
+
+// 空の状態からの誘導ボタン（data-goto属性で移動先タブを指定）
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-goto]');
+  if (!el) return;
+  selectTab(el.dataset.goto);
+  window.scrollTo({ top: 0 });
+  if (el.dataset.focus) setTimeout(() => $(el.dataset.focus)?.focus(), 80);
 });
 
 // --- 起動 -----------------------------------------------------------
@@ -173,8 +199,11 @@ function categoryLabel() {
 function renderRanking() {
   const rows = applyCategoryFilter(resultsData[voterFilter].current);
   $('#rankingTitle').textContent = categoryFilter ? `順位（${categoryLabel()}）` : '順位（総合）';
+  renderPodium(rows);
   if (!rows.length) {
-    $('#rankingTable').innerHTML = '<div class="empty">この部門にはまだ出し物がありません。</div>';
+    $('#rankingTable').innerHTML = cache.items.length
+      ? '<div class="empty">この部門にはまだ出し物がありません。</div>'
+      : '<div class="empty">まだ出し物が登録されていません。<br><button class="secondary" type="button" data-goto="items" data-focus="#itemName" style="margin-top:14px">＋ 出し物を登録する</button></div>';
     return;
   }
   const scores = rows.map((r) => r.score);
@@ -195,6 +224,25 @@ function renderRanking() {
   }
   html += '</tbody></table>';
   $('#rankingTable').innerHTML = html;
+}
+
+// --- 上位3位の表彰台（1位を中央に大きく表示） ---------------------------
+function renderPodium(rows) {
+  const box = $('#podium');
+  // 3件未満だと表彰台の形にならないので表にまかせる
+  if (rows.length < 3) { box.innerHTML = ''; return; }
+  const scoreLabel = isChoiceVisitor() ? '票' : '点';
+  const top = rows.slice(0, 3);
+  box.className = 'podium';
+  box.innerHTML = top.map((r, i) => {
+    const medal = r.rank === 1 ? 'r1' : r.rank === 2 ? 'r2' : 'r3';
+    return `<div class="podium-card pos${i + 1}">
+      <span class="rank-badge ${medal}">${r.rank}</span>
+      <span class="p-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>
+      <span class="p-score">${r.score}<small>${scoreLabel}</small></span>
+      ${isChoiceVisitor() ? '' : `<span class="p-count">${r.count}票</span>`}
+    </div>`;
+  }).join('');
 }
 
 // --- 順位の画像出力（公表用） ------------------------------------------
@@ -393,12 +441,28 @@ function renderCategories() {
     const del = document.createElement('button');
     del.className = 'danger'; del.textContent = '削除';
     del.onclick = async () => {
-      if (!confirm(`部門「${cat.name}」を削除しますか？\n所属していた出し物は「部門なし」になります（票は消えません）。`)) return;
+      // 部門の削除は「元に戻す」で復元できるので、確認ダイアログは出さない
+      const catName = cat.name;
+      const affected = cache.items.filter((i) => i.categoryId === cat.id).map((i) => i.id);
       try {
         await api(`/api/admin/categories/${cat.id}`, { method: 'DELETE' });
         if (editingCatId === cat.id) resetCatForm();
         await refreshMeta();
-        toast('削除しました', 'ok');
+        toast(`部門「${catName}」を削除しました`, '', {
+          actionLabel: '元に戻す',
+          duration: 6000,
+          action: async () => {
+            try {
+              // 同名の部門を作り直し、所属していた出し物を割り当て直す
+              const newCat = await api('/api/admin/categories', { method: 'POST', body: JSON.stringify({ name: catName }) });
+              for (const id of affected) {
+                await api(`/api/admin/items/${id}`, { method: 'PUT', body: JSON.stringify({ categoryId: newCat.id }) });
+              }
+              await refreshMeta();
+              toast(`部門「${catName}」を元に戻しました`, 'ok');
+            } catch (e) { toast(e.message, 'err'); }
+          },
+        });
       } catch (e) { toast(e.message, 'err'); }
     };
     row.append(edit, del);
@@ -752,7 +816,7 @@ async function loadSurveyResults() {
       }
       box.appendChild(block);
     });
-    if (!data.questions.length) box.innerHTML = '<div class="empty">設問がありません。「来場者アンケート」タブから追加してください。</div>';
+    if (!data.questions.length) box.innerHTML = '<div class="empty">アンケートの設問がまだありません。<br><button class="secondary" type="button" data-goto="survey" data-focus="#qText" style="margin-top:14px">＋ 設問をつくる</button></div>';
   } catch (e) { toast(e.message, 'err'); }
 }
 
