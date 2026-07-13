@@ -398,6 +398,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ============ Admin tab nav (grouped) ============ */
 .tab-nav { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; align-items: flex-end; }
 .tab-group { max-width: 100%; min-width: 0; }
+/* 設定だけ右端に寄せて「準備するもの」と役割を分ける */
+.tab-group-end { margin-left: auto; }
 .tab-group-label {
   font-size: .72rem; font-weight: 800; color: var(--muted);
   letter-spacing: .08em; margin: 0 0 6px 6px;
