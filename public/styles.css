@@ -442,6 +442,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .option-row .opt-remove:hover { color: var(--danger); filter: none; box-shadow: none; }
 
+/* ============ 使用量の警告バナー ============ */
+.usage-banner {
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: .9rem;
+  line-height: 1.6;
+  border: 1px solid;
+}
+.usage-banner.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.usage-banner.danger { background: var(--danger-soft); border-color: #fecaca; color: #991b1b; }
+
 /* ============ Misc ============ */
 .method-desc {
   background: var(--primary-soft);

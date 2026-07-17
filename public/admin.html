@@ -67,6 +67,7 @@
 
       <!-- 結果 -->
       <section class="tab" id="tab-results">
+        <div class="usage-banner hidden" id="usageBanner"></div>
         <div class="card">
           <h2>集計</h2>
           <p class="section-lead">対象と集計方法を選ぶと、順位が即座に再計算されます。</p>
@@ -329,6 +330,9 @@
             <button id="resetVotes" class="danger">全投票をリセット</button>
           </div>
           <p class="muted" style="margin-top:10px">出し物・採点項目・点数段階はリポジトリ直下の config.json を直接編集しても変更できます。編集後は再読み込みを押してください。</p>
+          <h2 style="margin-top:22px">サーバーの使用量</h2>
+          <p class="section-lead">このアプリはUpstash（無料枠）にデータを保存しています。アクセスが極端に多いと無料枠の上限に達し、一時的に投票できなくなることがあります。目安として今月のアクセス回数を表示します。</p>
+          <div id="usageInfo"></div>
           <h2 style="margin-top:22px">リセットの復元</h2>
           <p class="section-lead">「全投票をリセット」しても、直近2回分はリセット時点の票に戻せます。</p>
           <div id="backupList"></div>

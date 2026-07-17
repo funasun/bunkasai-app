@@ -164,10 +164,43 @@ async function loadResults() {
     $('#statJudge').textContent = resultsData.counts.judgeVotes;
     $('#statVisitor').textContent = resultsData.counts.visitorVotes;
     $('#statItems').textContent = cache.items.length;
+    renderUsage(resultsData.usage);
     renderRanking();
     renderCompare();
     renderJudgeMatrix();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+// サーバー（Upstash無料枠）の使用量を表示し、上限に近づいたら警告する
+function renderUsage(usage) {
+  const info = $('#usageInfo');
+  const banner = $('#usageBanner');
+  if (!usage || !usage.tracked || usage.count === null) {
+    info.innerHTML = '<div class="empty">この環境では使用量を計測していません（本番サーバーでのみ表示されます）。</div>';
+    banner.classList.add('hidden');
+    return;
+  }
+  const { count, softLimit, hardLimit, month } = usage;
+  const pct = Math.min(100, Math.round((count / hardLimit) * 100));
+  const level = count >= hardLimit ? 'danger' : count >= softLimit ? 'warn' : 'ok';
+  const barColor = level === 'danger' ? 'var(--danger)' : level === 'warn' ? 'var(--accent)' : 'var(--ok)';
+  info.innerHTML =
+    `<div class="row" style="justify-content:space-between;align-items:baseline">` +
+      `<strong>今月（${month}）のアクセス回数</strong>` +
+      `<span style="font-weight:800;font-variant-numeric:tabular-nums">${count.toLocaleString()} 回</span>` +
+    `</div>` +
+    `<div class="bar" style="margin-top:8px;height:10px"><div style="width:${pct}%;background:${barColor}"></div></div>` +
+    `<p class="muted" style="margin:6px 0 0">上限の目安 約${hardLimit.toLocaleString()}回に対して ${pct}%。通常の文化祭ならここまで届くことはほぼありません。</p>`;
+
+  if (level === 'ok') {
+    banner.classList.add('hidden');
+    banner.className = 'usage-banner hidden';
+    return;
+  }
+  banner.className = `usage-banner ${level}`;
+  banner.innerHTML = level === 'danger'
+    ? `<strong>⚠ 無料枠の上限に近づいています（今月 ${count.toLocaleString()} 回）。</strong><br>このままだと一時的に投票を受け付けられなくなる可能性があります。大画面での順位の自動更新など、常時アクセスが続く使い方をしていないか確認してください。`
+    : `<strong>アクセスが増えています（今月 ${count.toLocaleString()} 回）。</strong><br>まだ余裕はありますが、順位を大画面に映しっぱなしにするなど、通信が絶えず発生する使い方をしていないかご注意ください。`;
 }
 
 function rankBadge(rank) {

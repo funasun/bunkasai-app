@@ -8,6 +8,7 @@ import {
   listVoteBackups, restoreVoteBackup,
   putSurveyResponse, listSurveyResponses, clearSurveyResponses,
   issueToken, isValidToken, verifyPassword, isLegacyHash, newId,
+  bumpUsage, getUsage,
 } from './lib/store.js';
 import { METHODS, ranking, voteTotal } from './lib/aggregate.js';
 
@@ -15,6 +16,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// APIアクセスの回数を月ごとに記録する（無料枠の使用量を管理画面で確認するため）。
+// 静的ファイルはこのミドルウェアより前に処理されるのでカウント対象外。
+app.use('/api', (req, res, next) => {
+  bumpUsage().finally(next);
+});
 
 // asyncハンドラのエラーを500 JSONで返す
 const ah = (fn) => (req, res) => {
@@ -480,6 +487,7 @@ app.get('/api/admin/results', requireAuth, ah(async (req, res) => {
       judgeVotes: votes.filter((v) => v.voterType === 'judge').length,
       visitorVotes: votes.filter((v) => v.voterType === 'visitor').length,
     },
+    usage: await getUsage(),
   });
 }));
 
